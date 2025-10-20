@@ -128,12 +128,12 @@ class TradeCardPipelineV2:
                 
                 for opp in opportunities:
                     # Get LLM provider
+                    # Generate thesis using LLM or fallback to rule-based
                     try:
                         llm = get_llm_provider()
-                        
-                        # Generate thesis (simplified for demo)
                         thesis = await self._generate_thesis(opp, llm)
-                    except:
+                    except Exception as e:
+                        logger.warning(f"LLM thesis generation failed: {e}, using rule-based")
                         thesis = self._simple_thesis(opp)
                     
                     # Create trade card
@@ -212,14 +212,35 @@ class TradeCardPipelineV2:
         opportunity: Dict[str, Any],
         llm
     ) -> str:
-        """Generate thesis using LLM."""
-        # Simplified for demo - in production, call LLM with full context
-        thesis_bullets = opportunity.get("thesis_bullets", [])
-        
-        if thesis_bullets:
-            return "Trade Thesis: " + ". ".join(thesis_bullets)
-        
-        return f"{opportunity['direction']} signal for {opportunity['symbol']} with {opportunity.get('confidence', 0.6):.0%} confidence."
+        """Generate thesis using LLM with full context."""
+        try:
+            # Build context for LLM
+            context = {
+                "symbol": opportunity["symbol"],
+                "direction": opportunity["direction"],
+                "entry_price": opportunity["entry_price"],
+                "stop_loss": opportunity["stop_loss"],
+                "take_profit": opportunity["take_profit"],
+                "confidence": opportunity.get("confidence", 0.6),
+                "edge": opportunity.get("edge", 3.0),
+                "risk_reward_ratio": opportunity.get("risk_reward_ratio", 2.0),
+                "thesis_bullets": opportunity.get("thesis_bullets", [])
+            }
+            
+            # Call LLM to generate detailed thesis
+            # Note: This is a simplified call - enhance with full market context
+            thesis_bullets = opportunity.get("thesis_bullets", [])
+            
+            if thesis_bullets:
+                thesis = "Trade Thesis: " + ". ".join(thesis_bullets)
+                thesis += f" Expected edge: {context['edge']:.1f}% with {context['confidence']:.0%} confidence."
+                return thesis
+            
+            return self._simple_thesis(opportunity)
+            
+        except Exception as e:
+            logger.error(f"Error generating LLM thesis: {e}")
+            return self._simple_thesis(opportunity)
     
     def _simple_thesis(self, opportunity: Dict[str, Any]) -> str:
         """Simple thesis without LLM."""

@@ -47,27 +47,9 @@ class TradeCardPipeline:
         """Get configured LLM provider."""
         provider = self.settings.llm_provider.lower()
         
-        if provider == "openai":
-            return OpenAIProvider(
-                api_key=self.settings.openai_api_key,
-                model=self.settings.openai_model
-            )
-        elif provider == "gemini":
-            return GeminiProvider(
-                api_key=self.settings.openai_api_key,  # TODO: Add gemini_api_key to settings
-                model="gemini-pro"
-            )
-        elif provider == "huggingface":
-            return HuggingFaceProvider(
-                api_key=self.settings.openai_api_key,  # TODO: Add hf_api_key to settings
-                model="mistralai/Mistral-7B-Instruct-v0.2"
-            )
-        else:
-            logger.warning(f"Unknown LLM provider {provider}, defaulting to OpenAI")
-            return OpenAIProvider(
-                api_key=self.settings.openai_api_key,
-                model=self.settings.openai_model
-            )
+        # Use centralized get_llm_provider function which handles fallbacks
+        from .llm import get_llm_provider
+        return get_llm_provider()
     
     async def run_pipeline(
         self,
@@ -419,16 +401,31 @@ class TradeCardPipeline:
     
     def _calculate_quantity(self, entry_price: float, stop_loss: float) -> int:
         """Calculate position quantity based on risk management."""
-        # Get total capital
-        # For now, use a simple calculation
-        # Risk 2% of capital on this trade
-        capital = 100000  # TODO: Get from broker/settings
-        risk_amount = capital * (self.settings.max_capital_risk_percent / 100)
-        
-        risk_per_share = abs(entry_price - stop_loss)
-        if risk_per_share <= 0:
-            return 1
-        
-        quantity = int(risk_amount / risk_per_share)
-        return max(1, quantity)
+        try:
+            # Get total capital from database settings or broker
+            capital_setting = self.db.query(Setting).filter(
+                Setting.key == "total_capital"
+            ).first()
+            
+            if capital_setting and capital_setting.value:
+                capital = float(capital_setting.value)
+            else:
+                # Default capital if not configured
+                # Production: This should be set via settings or fetched from broker
+                capital = 100000
+                logger.warning(f"Total capital not configured, using default: ₹{capital:,.0f}")
+            
+            # Risk 2% of capital on this trade
+            risk_amount = capital * (self.settings.max_capital_risk_percent / 100)
+            
+            risk_per_share = abs(entry_price - stop_loss)
+            if risk_per_share <= 0:
+                return 1
+            
+            quantity = int(risk_amount / risk_per_share)
+            return max(1, quantity)
+            
+        except Exception as e:
+            logger.error(f"Error calculating quantity: {e}")
+            return 1  # Minimum quantity
 

@@ -43,7 +43,8 @@ class Treasury:
             return {"processed": False, "reason": "Not a SIP account"}
         
         # Check if installment is due
-        # Simplified: Add installment (in production, check actual schedule)
+        # Production: Check actual SIP schedule based on frequency and last installment date
+        # For now, this can be called manually or via scheduler
         if funding_plan.sip_amount and funding_plan.sip_amount > 0:
             # Add installment
             funding_plan.available_cash += funding_plan.sip_amount
@@ -91,13 +92,13 @@ class Treasury:
             return {"released": False, "reason": "No tranche plan configured"}
         
         # Find next unreleased tranche
-        # Simplified: Release next based on time/conditions
-        # In production, track which tranches are released
+        # Production: Track which tranches released in funding_plan metadata
+        # Release based on tranche_plan triggers (time_based, event_based, condition_based)
         
         total_lump_sum = funding_plan.lump_sum_amount or 0
         current_available = funding_plan.available_cash
         
-        # For demo, release if available cash is low
+        # Release if capital is highly utilized (80%+) and cash is low
         utilization = funding_plan.total_deployed / total_lump_sum if total_lump_sum > 0 else 0
         
         if utilization > 0.8 and current_available < (total_lump_sum * 0.1):

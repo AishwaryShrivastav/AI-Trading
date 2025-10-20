@@ -106,14 +106,19 @@ class FeatureBuilder:
             features_dict["regime_label"] = self._classify_regime(features_dict["atr_percent"])
             features_dict["liquidity_regime"] = self._classify_liquidity(df)
             
-            # Derivatives (placeholder - would come from options data)
+            # Derivatives features (optional - enhance with NSE Option Chain API)
+            # Production: Integrate with NSE derivatives API for:
+            # - IV Rank, PCR, OI changes, Futures basis
+            # Currently these are optional and set to None
             features_dict["iv_rank"] = None
             features_dict["pcr"] = None
             features_dict["pcr_delta"] = None
             features_dict["oi_change_percent"] = None
             features_dict["futures_basis"] = None
             
-            # Flows (placeholder - would come from FPI/DII data)
+            # Flow features (optional - enhance with FPI/DII data sources)
+            # Production: Integrate with NSE/BSE flow data or third-party providers
+            # Currently these are optional and set to None
             features_dict["fpi_flow_5d"] = None
             features_dict["dii_flow_5d"] = None
             

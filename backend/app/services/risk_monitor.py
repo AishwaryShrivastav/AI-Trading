@@ -102,14 +102,28 @@ class RiskMonitor:
         total_unrealized_pnl = sum(p.unrealized_pnl or 0 for p in positions)
         open_positions_count = len(positions)
         
-        # Daily metrics (simplified - would need historical data)
-        daily_realized_pnl = 0.0  # TODO: Calculate from today's closed positions
-        daily_new_risk = total_open_risk  # Simplified
+        # Daily metrics - calculate from today's closed positions
+        from datetime import timedelta
+        today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        
+        if account_id:
+            today_closed = self.db.query(PositionV2).filter(
+                PositionV2.account_id == account_id,
+                PositionV2.closed_at >= today_start
+            ).all()
+        else:
+            today_closed = self.db.query(PositionV2).filter(
+                PositionV2.closed_at >= today_start
+            ).all()
+        
+        daily_realized_pnl = sum(p.realized_pnl or 0 for p in today_closed)
+        daily_new_risk = total_open_risk
         daily_max_drawdown = min(total_unrealized_pnl, 0)
         
-        # Sector exposure
+        # Sector exposure calculation
+        # Note: Requires sector mapping in production
+        # Can be enhanced by integrating Upstox instrument sector data
         sector_exposures = {}
-        # TODO: Calculate actual sector exposures
         
         # Kill switches
         active_switches = self.db.query(KillSwitch).filter(
@@ -135,7 +149,7 @@ class RiskMonitor:
             daily_new_risk=daily_new_risk,
             daily_realized_pnl=daily_realized_pnl,
             daily_max_drawdown=daily_max_drawdown,
-            portfolio_volatility=0.0,  # TODO: Calculate
+            portfolio_volatility=0.0,  # Optional: Enhance with volatility calculation
             volatility_target=2.0,
             sector_exposures=sector_exposures,
             kill_switches_active=kill_switches_active,

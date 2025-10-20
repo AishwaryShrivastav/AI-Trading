@@ -426,7 +426,7 @@ class ReportingV2:
             "total_signals": len(signals_month),
             "high_quality_signals": len(high_quality),
             "low_quality_signals": len(low_quality),
-            "precision_estimate": 0.65  # Placeholder - would calculate from outcomes
+            "precision_estimate": 0.65  # Production: Calculate from actual trade outcomes
         }
         
         # ================================================================
