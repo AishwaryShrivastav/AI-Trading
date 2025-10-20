@@ -188,19 +188,37 @@ class RiskChecker:
         Check if symbol has upcoming earnings or corporate actions.
         
         Avoid trading within blackout window.
+        Production: Integrate with earnings calendar API or maintain event database.
         """
         try:
-            # TODO: Integrate with earnings calendar API
-            # For now, placeholder implementation
+            # Check in Events table for recent events
+            from ..database import Event
+            from datetime import timedelta
             
-            # Check in database settings for known events
+            blackout_days = self.settings.earnings_blackout_days
+            now = datetime.now()
+            
+            # Check for events within blackout window
+            recent_events = self.db.query(Event).filter(
+                Event.symbols.contains(symbol),
+                Event.event_type.in_(["EARNINGS", "RESULTS", "DIVIDEND"]),
+                Event.event_timestamp >= now - timedelta(days=blackout_days),
+                Event.event_timestamp <= now + timedelta(days=blackout_days)
+            ).all()
+            
+            if recent_events:
+                logger.warning(
+                    f"{symbol} has {len(recent_events)} event(s) within blackout window"
+                )
+                return False
+            
+            # Also check settings for manually configured events
             event_setting = self.db.query(Setting).filter(
                 Setting.key == f"events_{symbol}"
             ).first()
             
             if event_setting and event_setting.value:
                 events = event_setting.value
-                blackout_days = self.settings.earnings_blackout_days
                 
                 for event in events:
                     event_date = datetime.fromisoformat(event['date'])
@@ -216,7 +234,7 @@ class RiskChecker:
             
         except Exception as e:
             logger.error(f"Event window check error for {symbol}: {e}")
-            return True  # Fail safe
+            return True  # Fail safe - allow trade with warning
     
     async def check_circuit_breaker(self, symbol: str) -> bool:
         """Check if symbol is in circuit limit or halted."""
