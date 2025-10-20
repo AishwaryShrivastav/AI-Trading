@@ -14,6 +14,8 @@ from ..services.allocator import Allocator
 from ..services.treasury import Treasury
 from ..services.risk_monitor import RiskMonitor
 from ..services.playbook_manager import PlaybookManager
+from ..services.market_data_sync import MarketDataSync
+from ..services.execution_manager import ExecutionManager
 from ..schemas import TradeCardV2Response
 
 router = APIRouter(prefix="/api/ai-trader", tags=["ai_trader"])
@@ -30,6 +32,18 @@ class GenerateSignalsRequest(BaseModel):
 class HotPathRequest(BaseModel):
     """Request for hot path processing."""
     event_id: int
+
+
+class MarketDataSyncRequest(BaseModel):
+    """Request to sync market data from Upstox."""
+    symbols: List[str]
+    exchange: str = "NSE"
+
+
+class ExecuteTradeCardRequest(BaseModel):
+    """Request to execute a trade card."""
+    card_id: int
+    user_id: str = "default_user"
 
 
 # ============================================================================
@@ -414,4 +428,141 @@ async def list_playbooks(
             for pb in playbooks
         ]
     }
+
+
+# ============================================================================
+# MARKET DATA SYNC (Real Upstox Integration)
+# ============================================================================
+
+@router.post("/market-data/sync")
+async def sync_market_data(
+    request: MarketDataSyncRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Sync market data from Upstox API.
+    
+    Production-ready: Fetches real OHLCV data from Upstox,
+    no dummy or mock data.
+    
+    Updates local cache with latest data from Upstox.
+    """
+    try:
+        sync_service = MarketDataSync(db)
+        
+        results = await sync_service.sync_batch(
+            symbols=request.symbols,
+            exchange=request.exchange
+        )
+        
+        await sync_service.close()
+        
+        return {
+            "status": "success",
+            "message": f"Synced {len(results)} symbols from Upstox",
+            "results": results
+        }
+        
+    except Exception as e:
+        logger.error(f"Error syncing market data: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/market-data/prices")
+async def get_current_prices(
+    symbols: List[str] = Query(...),
+    exchange: str = Query("NSE"),
+    db: Session = Depends(get_db)
+):
+    """
+    Get current prices from Upstox API.
+    
+    Production-ready: Real-time LTP from Upstox.
+    """
+    try:
+        sync_service = MarketDataSync(db)
+        
+        prices = await sync_service.sync_current_prices(
+            symbols=symbols,
+            exchange=exchange
+        )
+        
+        await sync_service.close()
+        
+        return {
+            "status": "success",
+            "prices": prices,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error fetching prices: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# EXECUTION (Real Upstox Order Placement)
+# ============================================================================
+
+@router.post("/execute/trade-card")
+async def execute_trade_card(
+    request: ExecuteTradeCardRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Execute trade card with real Upstox order placement.
+    
+    Production-ready:
+    - Places real orders via Upstox API
+    - Creates bracket orders (Entry + SL + TP)
+    - Tracks positions
+    - Manages cash
+    
+    No mock or dummy execution.
+    """
+    try:
+        execution_mgr = ExecutionManager(db)
+        
+        result = await execution_mgr.execute_trade_card(
+            card_id=request.card_id,
+            user_id=request.user_id
+        )
+        
+        await execution_mgr.close()
+        
+        return {
+            "status": "success",
+            "execution_result": result
+        }
+        
+    except Exception as e:
+        logger.error(f"Error executing trade card: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/execute/monitor-fills/{order_id}")
+async def monitor_order_fills(
+    order_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    Monitor order fills from Upstox.
+    
+    Production-ready: Checks real fill status from Upstox API.
+    """
+    try:
+        execution_mgr = ExecutionManager(db)
+        
+        result = await execution_mgr.monitor_fills(order_id)
+        
+        await execution_mgr.close()
+        
+        return {
+            "status": "success",
+            "fill_status": result
+        }
+        
+    except Exception as e:
+        logger.error(f"Error monitoring fills: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 

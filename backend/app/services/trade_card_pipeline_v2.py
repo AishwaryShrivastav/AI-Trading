@@ -11,6 +11,8 @@ from .feature_builder import FeatureBuilder
 from .signal_generator import SignalGenerator
 from .allocator import Allocator
 from .treasury import Treasury
+from .market_data_sync import MarketDataSync
+from .execution_manager import ExecutionManager
 from .llm import get_llm_provider
 
 from ..database import Account, TradeCardV2, Signal
@@ -24,18 +26,25 @@ class TradeCardPipelineV2:
     """
     End-to-end pipeline for multi-account trade card generation.
     
+    Production-ready with real Upstox integration:
+    - Market data from Upstox API (no dummy data)
+    - Real-time prices via Upstox LTP
+    - Order execution via Upstox
+    - Position tracking from Upstox
+    
     Flow:
-    1. Ingest events (news, filings)
-    2. Build features (technical + derivatives)
-    3. Generate signals (from features or events)
-    4. Apply meta-labels (quality filtering)
-    5. For each account:
+    1. Sync market data from Upstox
+    2. Ingest events (news, filings)
+    3. Build features (technical + derivatives)
+    4. Generate signals (from features or events)
+    5. Apply meta-labels (quality filtering)
+    6. For each account:
        a. Filter by mandate
        b. Rank by objective
-       c. Size positions
+       c. Size positions with real Upstox prices
        d. Check capital availability
-    6. LLM Judge creates trade cards
-    7. Apply guardrails
+    7. LLM Judge creates trade cards
+    8. Apply guardrails
     """
     
     def __init__(self, db: Session):
@@ -47,6 +56,8 @@ class TradeCardPipelineV2:
         self.signal_generator = SignalGenerator(db)
         self.allocator = Allocator(db)
         self.treasury = Treasury(db)
+        self.market_data_sync = MarketDataSync(db)  # NEW: Real Upstox data
+        self.execution_manager = ExecutionManager(db)  # NEW: Real execution
         
         # Register feed sources
         # Note: NewsAPI requires API key in environment
@@ -73,12 +84,20 @@ class TradeCardPipelineV2:
         """
         logger.info(f"Starting full pipeline for {len(symbols)} symbols")
         
+        # Step 0: Sync market data from Upstox (PRODUCTION)
+        logger.info("Step 0: Syncing market data from Upstox...")
+        try:
+            sync_results = await self.market_data_sync.sync_batch(symbols)
+            logger.info(f"Synced market data: {sync_results}")
+        except Exception as e:
+            logger.warning(f"Market data sync failed: {e}. Using existing cache.")
+        
         # Step 1: Ingest latest events
         logger.info("Step 1: Ingesting events...")
         events_count = await self.ingestion_manager.ingest_all(symbols=symbols)
         
-        # Step 2: Build features
-        logger.info("Step 2: Building features...")
+        # Step 2: Build features from Upstox data
+        logger.info("Step 2: Building features from Upstox data...")
         features = await self.feature_builder.build_features_batch(symbols)
         
         # Step 3: Generate signals
