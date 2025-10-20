@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Trading System</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1>🤖 AI Trading System</h1>
+                <div class="header-actions">
+                    <button id="authBtn" class="btn btn-secondary">Login with Upstox</button>
+                    <button id="refreshBtn" class="btn btn-primary">Refresh</button>
+                    <button id="generateSignalsBtn" class="btn btn-success">Generate Signals</button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Navigation Tabs -->
+        <nav class="tabs">
+            <button class="tab active" data-tab="pending">Pending Approvals</button>
+            <button class="tab" data-tab="positions">Positions</button>
+            <button class="tab" data-tab="orders">Orders</button>
+            <button class="tab" data-tab="reports">Reports</button>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Pending Trade Cards Tab -->
+            <div id="pending-tab" class="tab-content active">
+                <div class="section-header">
+                    <h2>Pending Trade Cards</h2>
+                    <div id="pending-count" class="badge">0</div>
+                </div>
+                <div id="trade-cards-grid" class="trade-cards-grid">
+                    <!-- Trade cards will be loaded here -->
+                </div>
+                <div id="no-trades" class="empty-state" style="display: none;">
+                    <p>No pending trade cards. Run signal generation to create new opportunities.</p>
+                </div>
+            </div>
+
+            <!-- Positions Tab -->
+            <div id="positions-tab" class="tab-content">
+                <div class="section-header">
+                    <h2>Open Positions</h2>
+                </div>
+                <div id="positions-list" class="data-table">
+                    <!-- Positions will be loaded here -->
+                </div>
+            </div>
+
+            <!-- Orders Tab -->
+            <div id="orders-tab" class="tab-content">
+                <div class="section-header">
+                    <h2>Order History</h2>
+                </div>
+                <div id="orders-list" class="data-table">
+                    <!-- Orders will be loaded here -->
+                </div>
+            </div>
+
+            <!-- Reports Tab -->
+            <div id="reports-tab" class="tab-content">
+                <div class="section-header">
+                    <h2>Reports</h2>
+                </div>
+                <div class="reports-container">
+                    <div class="report-card">
+                        <h3>Today's Summary</h3>
+                        <div id="eod-report"></div>
+                    </div>
+                    <div class="report-card">
+                        <h3>Monthly Performance</h3>
+                        <div id="monthly-report"></div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Trade Card Modal -->
+    <div id="trade-card-modal" class="modal">
+        <div class="modal-content">
+            <span class="modal-close">&times;</span>
+            <div id="modal-body"></div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" class="loading-overlay" style="display: none;">
+        <div class="spinner"></div>
+        <p>Loading...</p>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast"></div>
+
+    <script src="/static/js/api.js"></script>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
+
