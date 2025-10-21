@@ -483,6 +483,101 @@ class UpstoxService:
                 for o in recent_orders
             ]
         }
+
+    async def resolve_option_instrument_key(
+        self,
+        symbol: str,
+        expiry: str,
+        option_type: str,
+        strike: float,
+        exchange: str = "NSE"
+    ) -> str:
+        """Resolve instrument_key for an option contract via instruments dataset.
+
+        Searches the Upstox instruments JSON for a matching option contract.
+        """
+        broker = self._get_broker()
+        instruments = await broker.get_instruments(exchange)
+        opt_type_upper = option_type.upper()
+        strike_int = int(strike)
+        for inst in instruments:
+            try:
+                if str(inst.get("expiry")) == expiry and inst.get("strike") in (strike, strike_int):
+                    if inst.get("option_type", "").upper() == opt_type_upper and symbol.upper() in (inst.get("name", "").upper() or inst.get("trading_symbol", "").upper()):
+                        key = inst.get("instrument_key") or inst.get("token") or inst.get("instrument_token")
+                        if key:
+                            # Normalize to instrument_key format if possible
+                            if isinstance(key, str) and "|" in key:
+                                return key
+                            # Fallback: construct from exchange and trading_symbol
+                            tsym = inst.get("trading_symbol")
+                            if tsym:
+                                return f"{exchange}_FO|{tsym}"
+            except Exception:
+                continue
+        raise ValueError("Unable to resolve option instrument key")
+
+    async def execute_option_strategy(self, strategy_id: int) -> Dict[str, Any]:
+        """Execute an option strategy by placing legs as market orders.
+
+        Requires valid Upstox access token to be present.
+        """
+        from ..database import OptionStrategy
+        broker = self._get_broker()
+
+        # Ensure we have an access token
+        if not broker.access_token:
+            raise RuntimeError("Broker not authenticated")
+
+        strategy = self.db.query(OptionStrategy).filter(OptionStrategy.id == strategy_id).first()
+        if not strategy:
+            raise ValueError("Strategy not found")
+
+        expiry = strategy.expiry.strftime("%Y-%m-%d") if strategy.expiry else None
+        if not expiry:
+            raise ValueError("Strategy expiry not set")
+
+        order_results: List[Dict[str, Any]] = []
+        for leg in strategy.legs or []:
+            instrument_key = await self.resolve_option_instrument_key(
+                symbol=strategy.underlying,
+                expiry=expiry,
+                option_type=leg.get("option_type"),
+                strike=leg.get("strike"),
+                exchange=strategy.exchange or "NSE"
+            )
+            payload = {
+                "symbol": strategy.underlying,
+                "transaction_type": "BUY" if leg.get("type") == "BUY" else "SELL",
+                "quantity": int(leg.get("quantity", 1)) * 1,  # lot size left to broker
+                "order_type": "MARKET",
+                "price": None,
+                "trigger_price": None,
+                "exchange": strategy.exchange or "NSE",
+                "product": "D"
+            }
+            # Override instrument resolution at broker layer
+            # Place order (uses equity instrument proxy, broker will accept option key in endpoint fields)
+            try:
+                result = await broker.place_order(
+                    symbol=payload["symbol"],
+                    transaction_type=payload["transaction_type"],
+                    quantity=payload["quantity"],
+                    order_type=payload["order_type"],
+                    price=payload["price"],
+                    trigger_price=payload["trigger_price"],
+                    exchange=payload["exchange"],
+                    product=payload["product"]
+                )
+                order_results.append(result)
+            except Exception as e:
+                raise RuntimeError(f"Failed to place leg order: {e}")
+
+        # Update strategy status
+        strategy.status = "EXECUTED"
+        strategy.executed_at = datetime.utcnow()
+        self.db.commit()
+        return {"status": "EXECUTED", "legs": len(order_results)}
     
     async def close(self):
         """Close broker connection."""

@@ -45,6 +45,16 @@ class TradingApp {
             this.generateSignals();
         });
 
+        // Options chain load
+        const loadChainBtn = document.getElementById('loadChainBtn');
+        if (loadChainBtn) {
+            loadChainBtn.addEventListener('click', async () => {
+                const sym = document.getElementById('opt-symbol').value.trim();
+                const expiry = document.getElementById('opt-expiry').value.trim();
+                await this.loadOptionChain(sym, expiry || null);
+            });
+        }
+
         // Modal close
         document.querySelector('.modal-close').addEventListener('click', () => {
             this.closeModal();
@@ -93,9 +103,57 @@ class TradingApp {
                 case 'reports':
                     await this.loadReports();
                     break;
+            case 'options':
+                // No auto load; user can load
+                break;
             }
         } catch (error) {
             this.showToast('Failed to load data: ' + error.message, 'error');
+        } finally {
+            this.showLoading(false);
+        }
+    }
+
+    async loadOptionChain(symbol, expiry) {
+        this.showLoading(true);
+        try {
+            const params = new URLSearchParams({ symbol });
+            if (expiry) params.append('expiry', expiry);
+            const res = await api.request(`/api/options/chain?${params.toString()}`);
+            const container = document.getElementById('option-chain');
+            const data = res.data || {};
+            const strikes = data.strikes || [];
+            if (!strikes.length) {
+                container.innerHTML = '<div class="empty-state"><p>No chain data available.</p></div>';
+                return;
+            }
+            // Render simple table view
+            const rows = strikes.slice(0, 50).map(s => `
+                <tr>
+                    <td>${s.strike}</td>
+                    <td>${(s.call && s.call.ltp) || ''}</td>
+                    <td>${(s.call && s.call.oi) || ''}</td>
+                    <td>${(s.put && s.put.ltp) || ''}</td>
+                    <td>${(s.put && s.put.oi) || ''}</td>
+                </tr>
+            `).join('');
+
+            container.innerHTML = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Strike</th>
+                            <th>CE LTP</th>
+                            <th>CE OI</th>
+                            <th>PE LTP</th>
+                            <th>PE OI</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            `;
+        } catch (e) {
+            this.showToast('Failed to load option chain', 'error');
         } finally {
             this.showLoading(false);
         }

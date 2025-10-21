@@ -88,6 +88,21 @@ class APIClient {
         return this.request(`/api/guardrails/explain?card_id=${cardId}`);
     }
 
+    // Options strategy endpoints
+    async generateOptionStrategy(symbol, expiry, accountId, strategyType = 'IRON_CONDOR', maxRisk = 50000) {
+        return this.request('/api/options/strategy/generate', {
+            method: 'POST',
+            body: JSON.stringify({ symbol, expiry, account_id: accountId, strategy_type: strategyType, max_risk: maxRisk })
+        });
+    }
+
+    async executeOptionStrategy(strategyId) {
+        return this.request('/api/options/strategy/execute', {
+            method: 'POST',
+            body: JSON.stringify({ strategy_id: strategyId })
+        });
+    }
+
     // Positions endpoints
     async getPositions() {
         return this.request('/api/positions');

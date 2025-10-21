@@ -176,13 +176,14 @@ class UpstoxBroker(BrokerBase):
         price: Optional[float] = None,
         trigger_price: Optional[float] = None,
         exchange: str = "NSE",
-        product: str = "D"
+        product: str = "D",
+        instrument_token_override: Optional[str] = None
     ) -> Dict[str, Any]:
         """Place an order."""
         await self.ensure_authenticated()
         
         try:
-            instrument_key = self._get_instrument_key(symbol, exchange)
+            instrument_key = instrument_token_override or self._get_instrument_key(symbol, exchange)
             
             payload = {
                 "instrument_token": instrument_key,

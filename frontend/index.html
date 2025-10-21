@@ -25,6 +25,7 @@
             <button class="tab active" data-tab="pending">Pending Approvals</button>
             <button class="tab" data-tab="positions">Positions</button>
             <button class="tab" data-tab="orders">Orders</button>
+            <button class="tab" data-tab="options">Options</button>
             <button class="tab" data-tab="reports">Reports</button>
         </nav>
 
@@ -79,6 +80,19 @@
                         <div id="monthly-report"></div>
                     </div>
                 </div>
+            </div>
+
+            <!-- Options Tab -->
+            <div id="options-tab" class="tab-content">
+                <div class="section-header">
+                    <h2>Options Chain</h2>
+                </div>
+                <div style="margin-bottom: 10px; display:flex; gap:8px; align-items:center;">
+                    <input id="opt-symbol" placeholder="Symbol e.g. RELIANCE" value="RELIANCE" />
+                    <input id="opt-expiry" placeholder="Expiry YYYY-MM-DD (optional)" />
+                    <button id="loadChainBtn" class="btn btn-primary">Load Chain</button>
+                </div>
+                <div id="option-chain" class="data-table"></div>
             </div>
         </main>
     </div>
