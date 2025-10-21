@@ -1,5 +1,5 @@
 """Database models and setup using SQLAlchemy."""
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Text, Boolean, JSON, ForeignKey
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Date, Text, Boolean, JSON, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from datetime import datetime
@@ -66,6 +66,35 @@ class TradeCard(Base):
     # Relationships
     orders = relationship("Order", back_populates="trade_card")
     audit_logs = relationship("AuditLog", back_populates="trade_card")
+
+
+# ----------------------------------------------------------------------------
+# Phase 2: Guardrails Support Models
+# ----------------------------------------------------------------------------
+class EarningsCalendar(Base):
+    """Upcoming earnings and corporate actions for event window checks."""
+    __tablename__ = "earnings_calendar"
+
+    id = Column(Integer, primary_key=True, index=True)
+    symbol = Column(String(20), nullable=False, index=True)
+    event_date = Column(Date, nullable=False, index=True)
+    event_type = Column(String(50), nullable=False)  # EARNINGS, DIVIDEND, AGM, etc.
+    source = Column(String(100))
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class SymbolMaster(Base):
+    """Symbol → sector/industry mapping for exposure checks."""
+    __tablename__ = "symbol_master"
+
+    id = Column(Integer, primary_key=True, index=True)
+    symbol = Column(String(20), unique=True, nullable=False, index=True)
+    company_name = Column(String(200))
+    sector = Column(String(100), index=True)
+    industry = Column(String(100))
+    exchange = Column(String(10), default="NSE")
+    isin = Column(String(20))
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class Order(Base):
@@ -596,6 +625,58 @@ class Feature(Base):
     # Provenance
     data_source = Column(String(50))
 
+
+class OptionChain(Base):
+    """Options chain snapshot per strike/expiry."""
+    __tablename__ = "option_chains"
+
+    id = Column(Integer, primary_key=True, index=True)
+    symbol = Column(String(20), nullable=False, index=True)
+    exchange = Column(String(10), default="NSE")
+    expiry = Column(Date, nullable=False, index=True)
+    strike = Column(Float, nullable=False, index=True)
+
+    # Call
+    ce_ltp = Column(Float)
+    ce_oi = Column(Integer)
+    ce_iv = Column(Float)
+
+    # Put
+    pe_ltp = Column(Float)
+    pe_oi = Column(Integer)
+    pe_iv = Column(Float)
+
+    spot_price = Column(Float)
+    atm_iv = Column(Float)
+    pcr = Column(Float)
+
+    ts = Column(DateTime, default=datetime.utcnow, index=True)
+
+
+class OptionStrategy(Base):
+    """Generated multi-leg option strategies."""
+    __tablename__ = "option_strategies"
+
+    id = Column(Integer, primary_key=True, index=True)
+    account_id = Column(Integer, ForeignKey("accounts.id"), index=True)
+    strategy_type = Column(String(50))  # IRON_CONDOR, BULL_PUT_SPREAD, etc.
+    underlying = Column(String(20), index=True)
+    exchange = Column(String(10), default="NSE")
+    expiry = Column(Date)
+
+    legs = Column(JSON)  # [{type:BUY/SELL, option_type:CE/PE, strike, premium, qty}]
+    net_premium = Column(Float)
+    max_profit = Column(Float)
+    max_loss = Column(Float)
+    breakeven_upper = Column(Float)
+    breakeven_lower = Column(Float)
+    margin_required = Column(Float)
+    pop = Column(Float)
+    pnl_scenarios = Column(JSON)
+
+    status = Column(String(20), default="PENDING", index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    executed_at = Column(DateTime)
 
 class Signal(Base):
     """Primary trading signals."""

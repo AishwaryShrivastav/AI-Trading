@@ -3,7 +3,7 @@ from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
 import logging
 
-from ..database import Account, Mandate, FundingPlan, Signal, PositionV2, Feature
+from ..database import Account, Mandate, FundingPlan, Signal, PositionV2, Feature, MarketDataCache
 from ..schemas import Direction
 
 logger = logging.getLogger(__name__)

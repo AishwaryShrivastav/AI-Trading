@@ -14,6 +14,8 @@ from .treasury import Treasury
 from .market_data_sync import MarketDataSync
 from .execution_manager import ExecutionManager
 from .llm import get_llm_provider
+from .risk_evaluation import RiskEvaluationResult
+from .risk_checks import RiskChecker
 
 from ..database import Account, TradeCardV2, Signal
 from ..config import get_settings
@@ -155,6 +157,52 @@ class TradeCardPipelineV2:
                         logger.warning(f"LLM thesis generation failed: {e}, using rule-based")
                         thesis = self._simple_thesis(opp)
                     
+                    # Guardrails: run real checks (block on CRITICAL)
+                    try:
+                        risk_checker = RiskChecker(self.db)
+                        risk_result = await risk_checker.run_all_checks(
+                            symbol=opp["symbol"],
+                            quantity=opp["quantity"],
+                            entry_price=opp["entry_price"],
+                            stop_loss=opp["stop_loss"],
+                            trade_type=opp["direction"],
+                            exchange=opp.get("exchange", "NSE"),
+                            account_id=account.id,
+                            sector=opp.get("sector"),
+                            event_id=None
+                        )
+                        if risk_result.has_critical_failures:
+                            logger.warning(
+                                f"Blocking card for {opp['symbol']} account {account.id}: critical guardrail"
+                            )
+                            # Persist blocked marker to avoid duplicates
+                            blocked_card = TradeCardV2(
+                                account_id=account.id,
+                                signal_id=opp.get("signal_id"),
+                                symbol=opp["symbol"],
+                                exchange=opp["exchange"],
+                                direction=opp["direction"],
+                                entry_price=opp["entry_price"],
+                                quantity=opp["quantity"],
+                                stop_loss=opp["stop_loss"],
+                                take_profit=opp["take_profit"],
+                                status="BLOCKED",
+                                thesis="Blocked by guardrails",
+                                liquidity_check=risk_result.liquidity_check,
+                                position_size_check=risk_result.position_size_check,
+                                exposure_check=risk_result.exposure_check,
+                                event_window_check=risk_result.event_window_check,
+                                regime_check=risk_result.regime_check,
+                                catalyst_freshness_check=risk_result.catalyst_freshness_check,
+                                risk_warnings=[w.to_dict() for w in risk_result.risk_warnings]
+                            )
+                            self.db.add(blocked_card)
+                            self.db.commit()
+                            continue
+                    except Exception as e:
+                        logger.error(f"Guardrail checks failed for {opp['symbol']}: {e}")
+                        continue
+
                     # Create trade card
                     card = TradeCardV2(
                         account_id=account.id,
@@ -175,13 +223,14 @@ class TradeCardPipelineV2:
                         risk_amount=opp["risk_amount"],
                         reward_amount=opp["reward_amount"],
                         risk_reward_ratio=opp["risk_reward_ratio"],
-                        # Guardrails (simplified)
-                        liquidity_check=True,
-                        position_size_check=True,
-                        exposure_check=True,
-                        event_window_check=True,
-                        regime_check=True,
-                        catalyst_freshness_check=True,
+                        # Guardrails (real)
+                        liquidity_check=risk_result.liquidity_check,
+                        position_size_check=risk_result.position_size_check,
+                        exposure_check=risk_result.exposure_check,
+                        event_window_check=risk_result.event_window_check,
+                        regime_check=risk_result.regime_check,
+                        catalyst_freshness_check=risk_result.catalyst_freshness_check,
+                        risk_warnings=[w.to_dict() for w in risk_result.risk_warnings],
                         status="PENDING",
                         priority=0,
                         model_version="gpt-4-turbo-preview"

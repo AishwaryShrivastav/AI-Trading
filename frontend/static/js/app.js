@@ -154,6 +154,18 @@ class TradingApp {
             document.getElementById(`reject-${card.id}`).addEventListener('click', () => {
                 this.rejectTradeCard(card.id);
             });
+
+            const explainBtn = document.querySelector(`.guardrail-explain-btn[data-card-id="${card.id}"]`);
+            if (explainBtn) {
+                explainBtn.addEventListener('click', async () => {
+                    try {
+                        const data = await api.guardrailsExplain(card.id);
+                        alert(`Guardrails for ${data.symbol}:\n` + JSON.stringify(data, null, 2));
+                    } catch (e) {
+                        alert('Failed to load guardrail details');
+                    }
+                });
+            }
         });
     }
 
@@ -161,11 +173,27 @@ class TradingApp {
         const confidence = (card.confidence * 100).toFixed(0);
         const riskReward = ((card.take_profit - card.entry_price) / (card.entry_price - card.stop_loss)).toFixed(2);
         
-        const warnings = card.risk_warnings && card.risk_warnings.length > 0
-            ? `<div class="risk-warnings">
-                ${card.risk_warnings.map(w => `<div class="warning">⚠️ ${w}</div>`).join('')}
-               </div>`
-            : '';
+        const guardrails = [
+            {name: 'Liquidity', passed: card.liquidity_check, icon: '💧'},
+            {name: 'Position Size', passed: card.position_size_check, icon: '📊'},
+            {name: 'Exposure', passed: card.exposure_check, icon: '🎯'},
+            {name: 'Event Window', passed: card.event_window_check, icon: '📅'},
+            {name: 'Regime', passed: card.regime_check, icon: '🌡️'},
+            {name: 'Catalyst', passed: card.catalyst_freshness_check, icon: '⚡'}
+        ];
+        const guardrailsHtml = `
+            <div class="guardrails-section">
+                <div class="guardrails-title">Guardrails</div>
+                ${guardrails.map(g => `
+                    <span class="guardrail ${g.passed ? 'pass' : 'fail'}">
+                        ${g.icon} ${g.name} ${g.passed ? '✓' : '✗'}
+                    </span>
+                `).join('')}
+                ${card.risk_warnings && card.risk_warnings.length ? `
+                    <button class="guardrail-explain-btn" data-card-id="${card.id}">Explain (${card.risk_warnings.length})</button>
+                ` : ''}
+            </div>
+        `;
 
         return `
             <div class="trade-card">
@@ -205,7 +233,7 @@ class TradingApp {
                         </div>
                     </div>
                     ${card.evidence ? `<div class="evidence">${this.truncate(card.evidence, 150)}</div>` : ''}
-                    ${warnings}
+                    ${guardrailsHtml}
                 </div>
                 <div class="trade-card-actions">
                     <button id="reject-${card.id}" class="btn btn-danger">Reject</button>

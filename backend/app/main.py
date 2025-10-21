@@ -6,10 +6,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pathlib import Path
+try:
+    from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+    PROM_AVAILABLE = True
+except Exception:
+    PROM_AVAILABLE = False
+from fastapi import Response, HTTPException
 
 from .config import get_settings
 from .database import init_db, engine, Base
-from .routers import auth, trade_cards, positions, signals, reports, upstox_advanced, accounts, ai_trader
+from .routers import auth, trade_cards, positions, signals, reports, upstox_advanced, accounts, ai_trader, guardrails, options
 from .schemas import HealthResponse
 from datetime import datetime
 
@@ -69,6 +75,8 @@ app.include_router(reports.router)
 app.include_router(upstox_advanced.router)
 app.include_router(accounts.router)  # Multi-account AI Trader
 app.include_router(ai_trader.router)  # AI Trader Pipeline
+app.include_router(guardrails.router)  # Guardrails API
+app.include_router(options.router)  # Options API
 
 
 # Health check
@@ -83,6 +91,14 @@ async def health_check():
         broker="upstox",
         llm_provider=settings.llm_provider
     )
+
+
+# Prometheus metrics endpoint
+@app.get("/metrics")
+async def metrics():
+    if not PROM_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Prometheus client not installed")
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 # Mount static files and serve frontend

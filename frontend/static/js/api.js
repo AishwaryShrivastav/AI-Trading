@@ -76,6 +76,18 @@ class APIClient {
         return this.request(`/api/trade-cards/${id}/risk-summary`);
     }
 
+    // Guardrails endpoints
+    async guardrailsCheck(payload) {
+        return this.request('/api/guardrails/check', {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        });
+    }
+
+    async guardrailsExplain(cardId) {
+        return this.request(`/api/guardrails/explain?card_id=${cardId}`);
+    }
+
     // Positions endpoints
     async getPositions() {
         return this.request('/api/positions');
