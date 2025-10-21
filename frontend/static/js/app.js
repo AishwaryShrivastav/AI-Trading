@@ -206,7 +206,9 @@ class TradingApp {
         // Add event listeners
         this.tradeCards.forEach(card => {
             document.getElementById(`approve-${card.id}`).addEventListener('click', () => {
-                this.approveTradeCard(card.id);
+                const qtyInput = document.getElementById(`qty-${card.id}`);
+                const qty = qtyInput ? parseInt(qtyInput.value, 10) : null;
+                this.approveTradeCard(card.id, qty);
             });
 
             document.getElementById(`reject-${card.id}`).addEventListener('click', () => {
@@ -265,8 +267,8 @@ class TradingApp {
                         <span class="trade-detail-value">₹${card.entry_price.toFixed(2)}</span>
                     </div>
                     <div class="trade-detail">
-                        <span class="trade-detail-label">Quantity</span>
-                        <span class="trade-detail-value">${card.quantity}</span>
+                        <label class="trade-detail-label" for="qty-${card.id}">Quantity</label>
+                        <input id="qty-${card.id}" class="qty-input" type="number" min="1" value="${card.quantity}" />
                     </div>
                     <div class="trade-detail">
                         <span class="trade-detail-label">Stop Loss</span>
@@ -306,14 +308,14 @@ class TradingApp {
         return text.substring(0, length) + '...';
     }
 
-    async approveTradeCard(id) {
+    async approveTradeCard(id, quantityOverride = null) {
         if (!confirm('Approve this trade and place order?')) {
             return;
         }
 
         this.showLoading(true);
         try {
-            const result = await api.approveTradeCard(id);
+            const result = await api.approveTradeCard(id, 'default_user', null, quantityOverride);
             this.showToast('Trade approved and order placed!', 'success');
             await this.loadPendingTradeCards();
         } catch (error) {

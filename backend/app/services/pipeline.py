@@ -331,7 +331,7 @@ class TradeCardPipeline:
                 quantity = self._calculate_quantity(entry_price, stop_loss)
                 
                 # Run risk checks
-                checks_passed, warnings = await self.risk_checker.run_all_checks(
+                risk_result = await self.risk_checker.run_all_checks(
                     symbol=symbol,
                     quantity=quantity,
                     entry_price=entry_price,
@@ -355,14 +355,16 @@ class TradeCardPipeline:
                     confidence=signal.get("confidence", 0.5),
                     evidence=signal.get("evidence", ""),
                     risks=signal.get("risks", ""),
-                    status="pending_approval" if checks_passed else "rejected",
-                    liquidity_check=checks_passed,
-                    position_size_check=checks_passed,
-                    exposure_check=checks_passed,
-                    event_window_check=True,
-                    risk_warnings=warnings,
+                    status="pending_approval" if risk_result.passed_all else "rejected",
+                    liquidity_check=risk_result.liquidity_check,
+                    position_size_check=risk_result.position_size_check,
+                    exposure_check=risk_result.exposure_check,
+                    event_window_check=risk_result.event_window_check,
+                    risk_warnings=[w.to_dict() for w in risk_result.risk_warnings],
                     model_version=signal.get("model_version"),
-                    rejection_reason=None if checks_passed else "; ".join(warnings)
+                    rejection_reason=None if risk_result.passed_all else "; ".join(
+                        [w.get("message", "") for w in [rw.to_dict() for rw in risk_result.risk_warnings]]
+                    )
                 )
                 
                 self.db.add(trade_card)

@@ -147,11 +147,18 @@ async def approve_trade_card(
                 detail="Not authenticated with broker. Please login first."
             )
         
+        # Determine quantity (allow override from approval)
+        order_quantity = trade_card.quantity
+        if approval.quantity and approval.quantity > 0:
+            order_quantity = approval.quantity
+            # Persist updated quantity on the card for audit consistency
+            trade_card.quantity = order_quantity
+
         # Place order
         order_response = await broker.place_order(
             symbol=trade_card.symbol,
             transaction_type=trade_card.trade_type,
-            quantity=trade_card.quantity,
+            quantity=order_quantity,
             order_type="LIMIT",  # Use limit order at entry price
             price=trade_card.entry_price,
             exchange="NSE",
@@ -168,7 +175,7 @@ async def approve_trade_card(
             exchange="NSE",
             order_type="LIMIT",
             transaction_type=trade_card.trade_type,
-            quantity=trade_card.quantity,
+            quantity=order_quantity,
             price=trade_card.entry_price,
             status="placed"
         )

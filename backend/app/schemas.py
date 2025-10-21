@@ -87,6 +87,7 @@ class TradeCardApproval(BaseModel):
     trade_card_id: int
     user_id: str = "default_user"
     notes: Optional[str] = None
+    quantity: Optional[int] = Field(None, gt=0)
 
 
 class TradeCardRejection(BaseModel):

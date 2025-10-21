@@ -32,8 +32,10 @@ class RiskChecker:
     DEFAULT_SECTOR_EXPOSURE_MAX = 30.0  # percent
     CATALYST_FRESHNESS_HOURS = 24
 
-    def __init__(self, db: Session):
+    def __init__(self, db: Session, broker: Optional[Any] = None):
         self.db = db
+        # Broker is optional; reserved for future checks that require live data or margin
+        self.broker = broker
 
     async def run_all_checks(
         self,
