@@ -15,7 +15,7 @@ from fastapi import Response, HTTPException
 
 from .config import get_settings
 from .database import init_db, engine, Base
-from .routers import auth, trade_cards, positions, signals, reports, upstox_advanced, accounts, ai_trader, guardrails, options, risk, scheduler as scheduler_router
+from .routers import auth, trade_cards, positions, signals, reports, upstox_advanced, accounts, ai_trader, guardrails, options, risk, scheduler as scheduler_router, hil as hil_router
 from .schemas import HealthResponse
 from datetime import datetime
 
@@ -92,6 +92,7 @@ app.include_router(guardrails.router)  # Guardrails API
 app.include_router(options.router)  # Options API
 app.include_router(risk.router)  # Risk governor (drawdown protocol)
 app.include_router(scheduler_router.router)  # Scheduler status
+app.include_router(hil_router.router)       # HIL relay (SSE + approve/halt)
 
 
 # Health check
@@ -121,7 +122,7 @@ async def metrics():
 frontend_path = Path(__file__).parent.parent.parent / "frontend"
 if frontend_path.exists():
     app.mount("/static", StaticFiles(directory=str(frontend_path / "static")), name="static")
-    
+
     @app.get("/")
     async def serve_frontend():
         """Serve frontend HTML."""
@@ -129,6 +130,14 @@ if frontend_path.exists():
         if index_file.exists():
             return FileResponse(index_file)
         return {"message": "Frontend not found. Please create frontend/index.html"}
+
+    @app.get("/hil")
+    async def serve_hil():
+        """Serve the HIL (Human-in-the-Loop) relay page."""
+        hil_file = frontend_path / "hil.html"
+        if hil_file.exists():
+            return FileResponse(hil_file)
+        return {"message": "HIL page not found"}
 else:
     @app.get("/")
     async def root():
@@ -136,7 +145,8 @@ else:
         return {
             "message": "AI Trading System API",
             "docs": "/docs",
-            "health": "/health"
+            "health": "/health",
+            "hil": "/hil",
         }
 
 

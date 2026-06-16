@@ -413,6 +413,20 @@ class TradeCardPipelineV2:
                     if tier == "AUTO":
                         await paper_execute_card_v2(self.db, card, settings=settings)
                         executed.append(card.id)
+                    elif tier == "HIL":
+                        # Push real-time notification to connected HIL clients
+                        try:
+                            from .notifier import Notifier, NEW_CARD
+                            await Notifier.get().send(NEW_CARD, {
+                                "id": card.id, "symbol": card.symbol,
+                                "direction": card.direction, "quantity": card.quantity,
+                                "entry_price": card.entry_price, "stop_loss": card.stop_loss,
+                                "take_profit": card.take_profit, "confidence": card.confidence,
+                                "strategy": card.strategy, "thesis": card.thesis,
+                                "risk_reward": card.risk_reward_ratio, "edge_pct": card.edge,
+                            })
+                        except Exception:
+                            pass  # notification failure must never block card creation
 
                 results_by_account[account.name] = {
                     "account_id": account.id,

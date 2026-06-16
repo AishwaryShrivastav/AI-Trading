@@ -164,6 +164,8 @@ async def job_morning_briefing() -> None:
         }
         _upsert(db, "morning_briefing", briefing)
         logger.info("[JOB] morning_briefing: %s", briefing)
+        from .notifier import Notifier
+        await Notifier.get().send("morning_briefing", briefing)
     except Exception as exc:
         logger.error("[JOB] morning_briefing failed: %s", exc)
     finally:
@@ -251,6 +253,8 @@ async def job_force_exit() -> None:
         if closed:
             db.commit()
             logger.info("[JOB] force_exit: closed %d intraday paper position(s) at 15:10 IST", closed)
+            from .notifier import Notifier
+            await Notifier.get().send("force_exit", {"closed": closed})
         else:
             logger.debug("[JOB] force_exit: no intraday paper positions to close")
 
@@ -278,6 +282,8 @@ async def job_eod_report() -> None:
         }
         _upsert(db, "last_eod_report", summary)
         logger.info("[JOB] eod_report: %s", summary)
+        from .notifier import Notifier
+        await Notifier.get().send("eod_report", summary)
     except Exception as exc:
         logger.error("[JOB] eod_report failed: %s", exc)
     finally:
