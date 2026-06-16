@@ -88,6 +88,17 @@ risk_snapshots, market_data_cache, symbol_master, option_chains, option_strategi
 
 ## 6. Progress log
 
+- 2026-06-16 — **Step 7 complete**: self-learning loop + reporting dashboard.
+  `services/trust_scoring.py` (daily EMA-smoothed 0–1 scores per strategy, updated by EOD job);
+  `services/regime_classifier.py` (VIX + Nifty SMA → TRENDING_UP/DOWN, RANGING, HIGH_VOL, UNKNOWN;
+  per-regime strategy multipliers); `services/self_reflection.py` (Friday 17:00 IST LLM analysis of
+  7-day paper performance → WeeklyReflection PENDING_REVIEW; human APPROVE/REJECT via API — never
+  auto-applied); `routers/reporting.py` (9 endpoints: performance, attribution, trust-scores, regime,
+  equity-curve, reflection CRUD); `frontend/dashboard.html` (Chart.js equity sparkline, trust-score
+  bars, regime badge, VIX, 30d attribution table, inline reflection review). `assemble_context()`
+  enriched with live trust_scores + regime data. Alembic migration 005 adds two new tables.
+  conftest.py resets daily LLM cost between runs. 31 new tests, 189 pass (1 pre-existing failure).
+
 - 2026-06-16 — **Step 6 complete** (pending review): web-based HIL relay.
   `services/notifier.py` (Notifier singleton: `asyncio.Queue` per SSE client,
   `send()` broadcasts, stale/full queues auto-pruned); `routers/hil.py`
