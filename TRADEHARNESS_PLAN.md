@@ -89,6 +89,13 @@ risk_snapshots, market_data_cache, symbol_master, option_chains, option_strategi
 ## 6. Progress log
 
 - 2026-06-16 — Step 0 complete: plan reconciled & locked. Step 1 spec drafted for validation.
+- 2026-06-16 — **Step 2b complete** (pending review): specialist agents. Added a generic
+  `LLMBase.complete_json` primitive (Anthropic + OpenAI) and `get_agent_llm()` (Haiku-tier);
+  new `services/agents.py` with News (event sentiment), Technical (feature posture), Macro
+  (regime/sector-rotation) agents that read real DB state and degrade to neutral defaults on
+  error/no-data; orchestrator now enriches context via these agents (toggle `use_specialist_agents`,
+  skipped under cost cap). 7 new mocked tests, 93 total pass. **Step 2c = wire orchestrator → pipeline
+  (AUTO→paper-execute, HIL→pending card), resolving the v1/v2 trade-card split.**
 - 2026-06-16 — **Step 2a complete** (pending review): orchestrator decision core. Added
   `LLMBase.orchestrate_decisions` (implemented in Anthropic + OpenAI providers) and a new
   `services/orchestrator.py` — context assembly from DB, strict JSON validation, deterministic

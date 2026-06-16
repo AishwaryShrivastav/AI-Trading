@@ -17,6 +17,7 @@ __all__ = [
     "HuggingFaceProvider",
     "AnthropicProvider",
     "get_llm_provider",
+    "get_agent_llm",
 ]
 
 
@@ -64,3 +65,18 @@ def get_llm_provider() -> LLMBase:
     if settings.anthropic_api_key:
         return _anthropic(settings)
     return _openai(settings)
+
+
+def get_agent_llm() -> LLMBase:
+    """Cheaper provider for high-frequency specialist agents (Haiku-tier).
+
+    Uses the Anthropic agent model when a key is present; otherwise falls back
+    to the default provider so agents still function.
+    """
+    settings = get_settings()
+    if settings.anthropic_api_key:
+        return AnthropicProvider(
+            api_key=settings.anthropic_api_key,
+            model=settings.anthropic_agent_model,
+        )
+    return get_llm_provider()

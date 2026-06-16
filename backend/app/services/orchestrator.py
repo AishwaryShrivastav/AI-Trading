@@ -40,10 +40,11 @@ _VALID_DIRECTIONS = {"LONG", "SHORT"}
 
 
 class Orchestrator:
-    def __init__(self, db: Session, llm=None, settings=None):
+    def __init__(self, db: Session, llm=None, settings=None, agent_llm=None):
         self.db = db
         self.settings = settings or get_settings()
         self._llm = llm  # lazily resolved so tests can inject a mock
+        self._agent_llm = agent_llm  # specialist-agent LLM (Haiku); None -> default
 
     @property
     def llm(self):
@@ -125,9 +126,32 @@ class Orchestrator:
             "sentiment": {},
         }
 
+    async def _enrich_context(self, context: Dict[str, Any], symbols: List[str]) -> None:
+        """Enrich context in-place with specialist-agent output (Step 2b).
+
+        Best-effort: agents degrade to neutral defaults, so failures here never
+        block a decision. Skipped when disabled or when the cost cap is hit.
+        """
+        if not getattr(self.settings, "use_specialist_agents", False):
+            return
+        if self._cost_exceeded():
+            return
+        try:
+            from .agents import run_specialist_agents
+
+            enrichment = await run_specialist_agents(self.db, symbols, llm=self._agent_llm)
+            context["sentiment"] = enrichment.get("sentiment", {})
+            context["technical"] = enrichment.get("technical", {})
+            context["regime"] = enrichment.get("regime", context.get("regime", "unknown"))
+            context["sector_rotation"] = enrichment.get("sector_rotation", [])
+            context["news_meta"] = enrichment.get("news_meta", {})
+        except Exception as e:
+            logger.warning(f"Context enrichment failed (continuing without): {e}")
+
     # ------------------------------------------------------------- decide
     async def decide(self, symbols: List[str], account_id: Optional[int] = None) -> Dict[str, Any]:
         context = self.assemble_context(symbols, account_id)
+        await self._enrich_context(context, symbols)
 
         if self._cost_exceeded():
             logger.warning("LLM daily cost cap reached — using rule-based fallback.")

@@ -88,6 +88,21 @@ class LLMBase(ABC):
             f"{self.__class__.__name__} does not implement orchestrate_decisions"
         )
 
+    async def complete_json(
+        self,
+        system: str,
+        user: str,
+        max_tokens: int = 1024,
+    ) -> Dict[str, Any]:
+        """Generic structured-output primitive used by specialist agents.
+
+        Sends a system + user prompt and returns the parsed JSON object. Keeps
+        agent code provider-agnostic.
+        """
+        raise NotImplementedError(
+            f"{self.__class__.__name__} does not implement complete_json"
+        )
+
     def get_model_version(self) -> str:
         """Return the model version/name being used."""
         return self.model

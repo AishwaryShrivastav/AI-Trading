@@ -223,6 +223,21 @@ conviction. If the context is thin or conflicting, return an empty trade_recomme
         result["_model"] = self.model
         return result
 
+    async def complete_json(self, system: str, user: str, max_tokens: int = 1024) -> Dict[str, Any]:
+        """Generic JSON completion used by specialist agents (Haiku-tier)."""
+        response = await self.client.messages.create(
+            model=self.model,
+            max_tokens=max_tokens,
+            temperature=0.2,
+            system=system + " Always respond with a single valid JSON object and nothing else.",
+            messages=[{"role": "user", "content": user}],
+        )
+        content = "".join(
+            block.text for block in response.content if getattr(block, "type", None) == "text"
+        )
+        result = _extract_json(content)
+        return result if isinstance(result, dict) else {"result": result}
+
     async def rank_signals(
         self,
         signals: List[Dict[str, Any]],

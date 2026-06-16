@@ -190,6 +190,21 @@ If context is thin or conflicting, return an empty trade_recommendations list.""
                 "error": str(e)
             }
     
+    async def complete_json(self, system: str, user: str, max_tokens: int = 1024) -> Dict[str, Any]:
+        """Generic JSON completion used by specialist agents."""
+        response = await self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": system + " Always respond with valid JSON."},
+                {"role": "user", "content": user},
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.2,
+            max_tokens=max_tokens,
+        )
+        result = json.loads(response.choices[0].message.content)
+        return result if isinstance(result, dict) else {"result": result}
+
     async def rank_signals(
         self,
         signals: List[Dict[str, Any]],
