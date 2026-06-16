@@ -15,7 +15,7 @@ from fastapi import Response, HTTPException
 
 from .config import get_settings
 from .database import init_db, engine, Base
-from .routers import auth, trade_cards, positions, signals, reports, upstox_advanced, accounts, ai_trader, guardrails, options, risk, scheduler as scheduler_router, hil as hil_router
+from .routers import auth, trade_cards, positions, signals, reports, upstox_advanced, accounts, ai_trader, guardrails, options, risk, scheduler as scheduler_router, hil as hil_router, reporting as reporting_router
 from .schemas import HealthResponse
 from datetime import datetime
 
@@ -93,6 +93,7 @@ app.include_router(options.router)  # Options API
 app.include_router(risk.router)  # Risk governor (drawdown protocol)
 app.include_router(scheduler_router.router)  # Scheduler status
 app.include_router(hil_router.router)       # HIL relay (SSE + approve/halt)
+app.include_router(reporting_router.router) # Step 7 reporting (trust scores, regime, reflections)
 
 
 # Health check
@@ -138,6 +139,14 @@ if frontend_path.exists():
         if hil_file.exists():
             return FileResponse(hil_file)
         return {"message": "HIL page not found"}
+
+    @app.get("/dashboard")
+    async def serve_dashboard():
+        """Serve the performance dashboard page."""
+        dash_file = frontend_path / "dashboard.html"
+        if dash_file.exists():
+            return FileResponse(dash_file)
+        return {"message": "Dashboard page not found"}
 else:
     @app.get("/")
     async def root():

@@ -18,7 +18,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 logger = logging.getLogger(__name__)
 
 _IST = "Asia/Kolkata"
-_TOTAL_JOBS = 11  # 10 cron + 1 heartbeat interval
+_TOTAL_JOBS = 12  # 11 cron + 1 heartbeat interval
 
 
 class SchedulerService:
@@ -83,6 +83,7 @@ class SchedulerService:
             job_force_exit,
             job_eod_report,
             job_eod_reflection,
+            job_weekly_reflection,
             job_heartbeat,
         )
 
@@ -100,6 +101,12 @@ class SchedulerService:
         self._sched.add_job(job_force_exit,       _cron(15, 10), id="force_exit",       name="Force-exit 15:10")
         self._sched.add_job(job_eod_report,       _cron(15, 30), id="eod_report",       name="EOD report 15:30")
         self._sched.add_job(job_eod_reflection,   _cron(16, 30), id="eod_reflection",   name="EOD reflection 16:30")
+        self._sched.add_job(
+            job_weekly_reflection,
+            CronTrigger(day_of_week="fri", hour=17, minute=0, timezone=_IST),
+            id="weekly_reflection",
+            name="Weekly reflection Fri 17:00",
+        )
         # Dead-man's switch heartbeat every 5 minutes
         self._sched.add_job(
             job_heartbeat,

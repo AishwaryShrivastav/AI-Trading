@@ -214,14 +214,14 @@ def test_heartbeat_missing_is_not_stale(clean_scheduler_settings):
 
 # ======================================================================= scheduler lifecycle
 @pytest.mark.asyncio
-async def test_scheduler_starts_has_eleven_jobs_and_stops():
+async def test_scheduler_starts_has_twelve_jobs_and_stops():
     from backend.app.services.scheduler import SchedulerService
     svc = SchedulerService()  # fresh instance (not the singleton)
     assert not svc.is_running
     svc.start()
     assert svc.is_running
     jobs = svc.job_status()
-    assert len(jobs) == 11  # 10 cron + 1 heartbeat interval
+    assert len(jobs) == 12  # 11 cron + 1 heartbeat interval
     svc.shutdown()
     assert not svc.is_running
 

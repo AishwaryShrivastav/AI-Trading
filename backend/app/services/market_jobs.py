@@ -266,7 +266,7 @@ async def job_force_exit() -> None:
 
 
 async def job_eod_report() -> None:
-    """15:30 IST — Generate EOD P&L report and store summary to Setting."""
+    """15:30 IST — Generate EOD P&L report, update trust scores, and store summary."""
     if is_nse_holiday():
         return
     db = SessionLocal()
@@ -282,10 +282,43 @@ async def job_eod_report() -> None:
         }
         _upsert(db, "last_eod_report", summary)
         logger.info("[JOB] eod_report: %s", summary)
+
+        # Update trust scores from today's closed paper positions
+        try:
+            from .trust_scoring import update_trust_scores
+            updated = update_trust_scores(db)
+            if updated:
+                logger.info("[JOB] eod_report: trust scores updated for %s", list(updated.keys()))
+        except Exception as exc:
+            logger.warning("[JOB] eod_report: trust score update failed: %s", exc)
+
         from .notifier import Notifier
         await Notifier.get().send("eod_report", summary)
     except Exception as exc:
         logger.error("[JOB] eod_report failed: %s", exc)
+    finally:
+        db.close()
+
+
+async def job_weekly_reflection() -> None:
+    """Friday 17:00 IST — Generate weekly self-reflection via LLM."""
+    if is_nse_holiday():
+        return
+    db = SessionLocal()
+    try:
+        from .self_reflection import generate_weekly_reflection
+        rec = await generate_weekly_reflection(db)
+        if rec:
+            logger.info("[JOB] weekly_reflection: created id=%d, status=%s", rec.id, rec.status)
+            from .notifier import Notifier
+            await Notifier.get().send("weekly_reflection", {
+                "id": rec.id,
+                "period": f"{rec.week_start.date()} → {rec.week_end.date()}",
+                "status": rec.status,
+                "total_pnl_inr": (rec.performance_data or {}).get("total_pnl_inr"),
+            })
+    except Exception as exc:
+        logger.error("[JOB] weekly_reflection failed: %s", exc)
     finally:
         db.close()
 
