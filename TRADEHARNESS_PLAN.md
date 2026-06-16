@@ -67,7 +67,7 @@ risk_snapshots, market_data_cache, symbol_master, option_chains, option_strategi
 | **2** | Orchestrator + specialist agents (L4) ✅ | Pipeline emits validated orchestrator JSON (`market_thesis`, `trade_recommendations[]`, `tier` AUTO/HIL/SKIP, `risk_flags`); malformed JSON → rule-based fallback; per-day Claude cost tracked & capped. **Done (2a+2b+2c), live Claude pending key.** |
 | **3** | Strategy expansion + backtest harness (L3) ✅ | Each strategy backtests on history (CAGR/Sharpe/DD/win-rate), forward-bias-safe, results stored. **Done (3a harness + 3b strategies); ORB deferred to live-WebSocket; real backfill needs Upstox token.** |
 | **4** | Risk engine extension (L5) ✅ | Drawdown protocol (diagnose→paper→halt→RESUME), VIX circuit breakers, trailing/time SL, net-edge cost-gate — all tested. **Done (4a+4b); profit-separation + VIX feed + 15:10 time-exit execution land with the scheduler.** |
-| **5** | Market-aware scheduler (L1/I3) | Jobs fire on timetable (token refresh, pre-market, signals, 15:10 force-exit, EOD, reflection); holiday calendar + dead-man's switch work |
+| **5** | Market-aware scheduler (L1/I3) ✅ | Jobs fire on timetable (token refresh, pre-market, signals, 15:10 force-exit, EOD, reflection); holiday calendar + dead-man's switch work |
 | **6** | Telegram HIL relay (L6) | Approve a paper trade from phone → executes in paper → shows in journal; HALT/RESUME + escalation tiers work |
 | **7** | Self-learning loop + reporting (L7/L8) | EOD job updates rolling strategy trust scores; regime classifier reweights strategies; weekly human-gated self-reflection; Sharpe/drawdown/attribution + Nifty benchmark on dashboard |
 | **8** | Paper sprint (2 weeks) | 2 weeks paper data; ≥2 strategies Sharpe > 1.0 |
@@ -87,6 +87,19 @@ risk_snapshots, market_data_cache, symbol_master, option_chains, option_strategi
 ---
 
 ## 6. Progress log
+
+- 2026-06-16 — **Step 5 complete** (pending review): market-aware scheduler.
+  `services/nse_calendar.py` (pure: `is_nse_holiday`, `is_market_hours`, `ist_now`,
+  2026 NSE holiday set); `services/market_jobs.py` (9 async job functions: 07:55 token
+  refresh, 08:30 pre-market, 09:00 morning briefing, 09:15 market open, 11:00/13:00/14:30
+  checkpoints → trailing-stop ratchet + risk eval, 15:10 force-exit intraday paper
+  positions, 15:30 EOD report, 16:30 Claude EOD reflection; dead-man's switch:
+  `job_heartbeat` every 5 min + `check_missed_heartbeat` on startup);
+  `services/scheduler.py` (SchedulerService singleton wrapping AsyncIOScheduler IST,
+  11 jobs — 10 CronTrigger + 1 IntervalTrigger); `routers/scheduler.py`
+  (GET /api/scheduler/status); config: `scheduler_enabled`, `scheduler_watchlist`,
+  `heartbeat_max_age_minutes`; `main.py` lifespan wires start/shutdown + startup
+  heartbeat check. 20 new tests, 145 total pass.
 
 - 2026-06-16 — **Step 4b complete** (pending review): cost gate + VIX breakers + stop engine.
   `services/cost_model.py` (Indian round-trip costs + `passes_cost_gate` requiring ≥0.5% net edge,
