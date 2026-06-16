@@ -15,7 +15,7 @@ from fastapi import Response, HTTPException
 
 from .config import get_settings
 from .database import init_db, engine, Base
-from .routers import auth, trade_cards, positions, signals, reports, upstox_advanced, accounts, ai_trader, guardrails, options, risk
+from .routers import auth, trade_cards, positions, signals, reports, upstox_advanced, accounts, ai_trader, guardrails, options, risk, scheduler as scheduler_router
 from .schemas import HealthResponse
 from datetime import datetime
 
@@ -34,19 +34,32 @@ async def lifespan(app: FastAPI):
     """Application lifespan manager."""
     # Startup
     logger.info("Starting AI Trading System...")
-    
+
     # Initialize database
     Base.metadata.create_all(bind=engine)
     logger.info("Database initialized")
-    
-    # TODO: Initialize scheduler for daily jobs
-    # scheduler = AsyncIOScheduler()
-    # scheduler.start()
-    
+
+    # Dead-man's switch: alert if we missed heartbeats from a previous run
+    try:
+        from .services.market_jobs import check_missed_heartbeat
+        hb = check_missed_heartbeat()
+        if hb.get("stale"):
+            logger.critical("[STARTUP] Dead-man's switch: %s", hb["reason"])
+    except Exception as exc:  # pragma: no cover
+        logger.warning("Heartbeat check on startup failed: %s", exc)
+
+    # Start market-aware scheduler (disabled in tests via SCHEDULER_ENABLED=false)
+    if settings.scheduler_enabled:
+        from .services.scheduler import SchedulerService
+        SchedulerService.get().start()
+
     yield
-    
+
     # Shutdown
     logger.info("Shutting down AI Trading System...")
+    if settings.scheduler_enabled:
+        from .services.scheduler import SchedulerService
+        SchedulerService.get().shutdown()
 
 
 # Create FastAPI app
@@ -78,6 +91,7 @@ app.include_router(ai_trader.router)  # AI Trader Pipeline
 app.include_router(guardrails.router)  # Guardrails API
 app.include_router(options.router)  # Options API
 app.include_router(risk.router)  # Risk governor (drawdown protocol)
+app.include_router(scheduler_router.router)  # Scheduler status
 
 
 # Health check

@@ -74,7 +74,10 @@ class Settings(BaseSettings):
     default_trade_horizon_days: int = 3
     earnings_blackout_days: int = 2
     
-    # Scheduler
+    # Scheduler (Step 5)
+    scheduler_enabled: bool = True           # set False in tests / CI
+    scheduler_watchlist: str = "RELIANCE,TCS,INFY,HDFCBANK,ICICIBANK"
+    heartbeat_max_age_minutes: int = 30      # dead-man's switch threshold
     signal_generation_hour: int = 9
     signal_generation_minute: int = 15
     eod_report_hour: int = 16
