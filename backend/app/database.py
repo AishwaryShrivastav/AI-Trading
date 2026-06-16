@@ -841,6 +841,33 @@ class KillSwitch(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class BacktestResult(Base):
+    """Stored backtest metrics per strategy/symbol (TradeHarness Step 3)."""
+    __tablename__ = "backtest_results"
+
+    id = Column(Integer, primary_key=True, index=True)
+    strategy = Column(String(50), nullable=False, index=True)
+    symbol = Column(String(20), nullable=False, index=True)
+    exchange = Column(String(10), default="NSE")
+    interval = Column(String(10), default="1D")
+
+    start_date = Column(String(40))
+    end_date = Column(String(40))
+
+    num_trades = Column(Integer, default=0)
+    win_rate = Column(Float)
+    total_return_pct = Column(Float)
+    cagr = Column(Float)
+    sharpe = Column(Float)
+    max_drawdown = Column(Float)
+    avg_hold_days = Column(Float)
+
+    params = Column(JSON)
+    trades = Column(JSON)
+
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
 # Database initialization
 def init_db():
     """Initialize database tables."""

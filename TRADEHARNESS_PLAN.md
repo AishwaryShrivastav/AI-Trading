@@ -88,6 +88,15 @@ risk_snapshots, market_data_cache, symbol_master, option_chains, option_strategi
 
 ## 6. Progress log
 
+- 2026-06-16 — **Step 3a complete** (pending review): backtest harness. Data source = Upstox
+  historical (per decision). New `services/backtest/` (data_loader: cache + `backfill_from_upstox`;
+  engine: forward-bias-safe walk, one-position-at-a-time, SL/TP/max-hold exits + slippage, daily
+  equity → CAGR/Sharpe/maxDD/win-rate/avg-hold; runner persists to new `backtest_results` table +
+  migration 004). `POST /api/ai-trader/backtest`. 5 tests (forward-bias guard, deterministic-win,
+  persistence), 101 total pass. Engine runs off `market_data_cache` (offline-testable); real
+  history needs a valid Upstox token to backfill. **Step 3b = new strategies (RSI-divergence,
+  Bollinger-squeeze, 52w-high, Nifty-ETF baseline); ORB deferred to live-WebSocket step.**
+
 - 2026-06-16 — Step 0 complete: plan reconciled & locked. Step 1 spec drafted for validation.
 - 2026-06-16 — **Step 2c complete** (pending review): orchestrator wired into v2 pipeline.
   Standardized on v2 (multi-account) as canonical. New `services/paper_execution.py`

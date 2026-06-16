@@ -86,6 +86,27 @@ async def run_full_pipeline(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+class BacktestRequest(BaseModel):
+    """Request to backtest strategies on cached history."""
+    symbols: List[str]
+    interval: str = "1D"
+
+
+@router.post("/backtest")
+async def run_backtest(request: BacktestRequest, db: Session = Depends(get_db)):
+    """Backtest default strategies on cached OHLCV; persists + returns metrics.
+
+    Backfill history first (Upstox) if the cache is sparse.
+    """
+    try:
+        from ..services.backtest.runner import run_backtests
+        results = await run_backtests(db, request.symbols, interval=request.interval)
+        return {"status": "success", "count": len(results), "results": results}
+    except Exception as e:
+        logger.error(f"Error running backtest: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/orchestrate")
 async def run_orchestrated(
     request: GenerateSignalsRequest,
