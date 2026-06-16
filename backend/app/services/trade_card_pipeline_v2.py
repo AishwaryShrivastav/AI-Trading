@@ -359,6 +359,18 @@ class TradeCardPipelineV2:
                         opp["risk_amount"] = opp["risk_amount"] * ratio
                         opp["reward_amount"] = opp["reward_amount"] * ratio
 
+                    # Net-edge cost gate: skip trades that can't beat round-trip costs.
+                    from .cost_model import passes_cost_gate
+                    gate = passes_cost_gate(
+                        entry=opp["entry_price"], take_profit=opp["take_profit"],
+                        quantity=opp["quantity"], side=opp["direction"],
+                        min_net_edge_pct=settings.min_net_edge_pct,
+                        slippage_bps=getattr(settings, "paper_slippage_bps", 5.0),
+                    )
+                    if not gate["passed"]:
+                        skipped.append(opp["symbol"])
+                        continue
+
                     # Guardrails still gate everything.
                     risk_checker = RiskChecker(self.db)
                     risk_result = await risk_checker.run_all_checks(

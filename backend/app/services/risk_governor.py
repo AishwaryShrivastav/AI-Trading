@@ -62,6 +62,28 @@ class RiskGovernor:
     def get_state(self) -> Dict[str, Any]:
         return self._get(_STATE_KEY) or {"state": ACTIVE, "reason": "init", "resume_required": False}
 
+    # ----------------------------------------------------------- VIX breakers
+    def get_vix(self) -> Optional[float]:
+        v = self._get("india_vix")
+        try:
+            return float(v) if v is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    def vix_assessment(self, vix: Optional[float] = None) -> Dict[str, Any]:
+        """Map India VIX to a sizing factor and intraday/all-entry blocks."""
+        vix = self.get_vix() if vix is None else vix
+        s = self.settings
+        if vix is None:
+            return {"vix": None, "size_factor": 1.0, "block_intraday": False, "block_all": False}
+        if vix >= s.vix_halt_level:
+            return {"vix": vix, "size_factor": 0.0, "block_intraday": True, "block_all": True}
+        if vix >= s.vix_intraday_pause_level:
+            return {"vix": vix, "size_factor": s.vix_derisk_factor, "block_intraday": True, "block_all": False}
+        if vix >= s.vix_derisk_level:
+            return {"vix": vix, "size_factor": s.vix_derisk_factor, "block_intraday": False, "block_all": False}
+        return {"vix": vix, "size_factor": 1.0, "block_intraday": False, "block_all": False}
+
     # ----------------------------------------------------------- equity/drawdown
     async def _equity_and_drawdown(self, account_id: Optional[int]) -> Dict[str, float]:
         snap = await self.monitor.capture_snapshot(account_id)
@@ -127,25 +149,26 @@ class RiskGovernor:
 
     # ----------------------------------------------------------- sizing
     def position_size_factor(self) -> float:
-        """Multiplier applied to new position sizes given the current state."""
+        """Multiplier applied to new position sizes: drawdown × VIX factors."""
         state = self.get_state()
         s = state.get("state", ACTIVE)
         if s == HALTED:
             return 0.0
         if s == DERISK:
-            return self.settings.derisk_capital_factor
-        # ACTIVE — apply post-resume reduction if still inside the window.
-        until = state.get("post_resume_until")
-        if until:
-            try:
-                if datetime.utcnow() < datetime.fromisoformat(until):
-                    return self.settings.post_resume_capital_factor
-            except Exception:
-                pass
-        return 1.0
+            dd_factor = self.settings.derisk_capital_factor
+        else:
+            dd_factor = 1.0
+            until = state.get("post_resume_until")
+            if until:
+                try:
+                    if datetime.utcnow() < datetime.fromisoformat(until):
+                        dd_factor = self.settings.post_resume_capital_factor
+                except Exception:
+                    pass
+        return dd_factor * self.vix_assessment()["size_factor"]
 
     def blocks_new_entries(self) -> bool:
-        return self.get_state().get("state") == HALTED
+        return self.get_state().get("state") == HALTED or self.vix_assessment()["block_all"]
 
     # ----------------------------------------------------------- diagnosis
     async def _self_diagnose(self, account_id: Optional[int], ed: Dict[str, float]) -> Dict[str, Any]:

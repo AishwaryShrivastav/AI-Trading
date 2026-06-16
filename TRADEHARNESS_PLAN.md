@@ -66,7 +66,7 @@ risk_snapshots, market_data_cache, symbol_master, option_chains, option_strategi
 | **1** | Paper mode + Claude provider | `LLM_PROVIDER=anthropic` writes a thesis on a sample signal; a trade card executes in PAPER mode (simulated fill → `orders_v2`/`positions_v2`, no Upstox call); 60 tests green + new tests |
 | **2** | Orchestrator + specialist agents (L4) ✅ | Pipeline emits validated orchestrator JSON (`market_thesis`, `trade_recommendations[]`, `tier` AUTO/HIL/SKIP, `risk_flags`); malformed JSON → rule-based fallback; per-day Claude cost tracked & capped. **Done (2a+2b+2c), live Claude pending key.** |
 | **3** | Strategy expansion + backtest harness (L3) ✅ | Each strategy backtests on history (CAGR/Sharpe/DD/win-rate), forward-bias-safe, results stored. **Done (3a harness + 3b strategies); ORB deferred to live-WebSocket; real backfill needs Upstox token.** |
-| **4** | Risk engine extension (L5) | Simulated 15% drawdown fires R4 protocol (diagnose→paper→halt→RESUME); VIX circuit breakers, trailing/time SL, profit-separation, cost-gate tested |
+| **4** | Risk engine extension (L5) ✅ | Drawdown protocol (diagnose→paper→halt→RESUME), VIX circuit breakers, trailing/time SL, net-edge cost-gate — all tested. **Done (4a+4b); profit-separation + VIX feed + 15:10 time-exit execution land with the scheduler.** |
 | **5** | Market-aware scheduler (L1/I3) | Jobs fire on timetable (token refresh, pre-market, signals, 15:10 force-exit, EOD, reflection); holiday calendar + dead-man's switch work |
 | **6** | Telegram HIL relay (L6) | Approve a paper trade from phone → executes in paper → shows in journal; HALT/RESUME + escalation tiers work |
 | **7** | Self-learning loop + reporting (L7/L8) | EOD job updates rolling strategy trust scores; regime classifier reweights strategies; weekly human-gated self-reflection; Sharpe/drawdown/attribution + Nifty benchmark on dashboard |
@@ -88,6 +88,13 @@ risk_snapshots, market_data_cache, symbol_master, option_chains, option_strategi
 
 ## 6. Progress log
 
+- 2026-06-16 — **Step 4b complete** (pending review): cost gate + VIX breakers + stop engine.
+  `services/cost_model.py` (Indian round-trip costs + `passes_cost_gate` requiring ≥0.5% net edge,
+  wired into `run_orchestrated` pre-card); VIX circuit breakers in `RiskGovernor`
+  (≥18 size 0.6×, ≥22 pause intraday, ≥28 halt — folded into size-factor/blocks);
+  `services/stop_engine.py` (ratchet-only trailing stop +2%/lock-50%, `is_time_exit`,
+  `manage_trailing_stops`). 12 tests, 125 total pass. VIX feed + 15:10 force-exit execution land
+  with the scheduler (Step 5). **Step 4 fully done.**
 - 2026-06-16 — **Steps 1–3 merged to `master`** (PR #1). **Step 4a complete** (pending review):
   risk governor / staged drawdown protocol. New `services/risk_governor.py` — tracks peak equity,
   computes true drawdown %, state machine ACTIVE/DERISK/HALTED (persisted in Setting); 8%→DERISK
