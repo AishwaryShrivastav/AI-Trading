@@ -275,6 +275,131 @@ class TradeCardPipelineV2:
             "results_by_account": results_by_account
         }
     
+    async def run_orchestrated(
+        self,
+        symbols: List[str],
+        user_id: str = "default_user",
+        orchestrator=None,
+    ) -> Dict[str, Any]:
+        """Orchestrator-driven flow (Step 2c).
+
+        The orchestrator (Claude brain) decides conviction + tier per instrument;
+        the allocator supplies concrete sizing. Routing per recommendation:
+          SKIP -> no card; HIL -> PENDING TradeCardV2; AUTO -> create + paper-execute.
+        Guardrail CRITICAL failures still block regardless of tier.
+        """
+        from .orchestrator import Orchestrator
+        from .paper_execution import paper_execute_card_v2
+
+        orchestrator = orchestrator or Orchestrator(self.db)
+
+        # Use existing ACTIVE high-quality signals (signal generation is a
+        # separate stage / scheduled job).
+        signals = self.db.query(Signal).filter(
+            Signal.symbol.in_(symbols),
+            Signal.status == "ACTIVE",
+        ).all()
+        high_quality_signals = [s for s in signals if (s.quality_score or 0) > 0.5]
+
+        accounts = self.db.query(Account).filter(
+            Account.user_id == user_id,
+            Account.status == "ACTIVE",
+        ).all()
+
+        results_by_account: Dict[str, Any] = {}
+
+        for account in accounts:
+            try:
+                opportunities = await self.allocator.allocate_for_account(
+                    account_id=account.id,
+                    candidate_signals=high_quality_signals,
+                    max_cards=5,
+                )
+
+                # Orchestrator decides tiers for this account's universe.
+                decision = await orchestrator.decide(
+                    [o["symbol"] for o in opportunities] or symbols,
+                    account_id=account.id,
+                )
+                tier_by_symbol = {
+                    r["instrument"].upper(): r
+                    for r in decision.get("trade_recommendations", [])
+                }
+
+                created, executed, skipped = [], [], []
+
+                for opp in opportunities:
+                    rec = tier_by_symbol.get(opp["symbol"].upper())
+                    tier = rec["tier"] if rec else "SKIP"
+                    if tier == "SKIP":
+                        skipped.append(opp["symbol"])
+                        continue
+
+                    # Guardrails still gate everything.
+                    risk_checker = RiskChecker(self.db)
+                    risk_result = await risk_checker.run_all_checks(
+                        symbol=opp["symbol"], quantity=opp["quantity"],
+                        entry_price=opp["entry_price"], stop_loss=opp["stop_loss"],
+                        trade_type=opp["direction"], exchange=opp.get("exchange", "NSE"),
+                        account_id=account.id, sector=opp.get("sector"), event_id=None,
+                    )
+                    if risk_result.has_critical_failures:
+                        skipped.append(opp["symbol"])
+                        continue
+
+                    thesis = (rec.get("reasoning") if rec else None) or self._simple_thesis(opp)
+                    card = TradeCardV2(
+                        account_id=account.id, signal_id=opp.get("signal_id"),
+                        symbol=opp["symbol"], exchange=opp["exchange"], direction=opp["direction"],
+                        entry_price=opp["entry_price"], quantity=opp["quantity"],
+                        position_size_rupees=opp["position_size_rupees"],
+                        stop_loss=opp["stop_loss"], take_profit=opp["take_profit"],
+                        strategy="orchestrated", thesis=thesis,
+                        confidence=(rec.get("conviction") if rec else opp.get("confidence", 0.6)),
+                        edge=opp.get("edge", 3.0), horizon_days=opp.get("horizon_days", 5),
+                        risk_amount=opp["risk_amount"], reward_amount=opp["reward_amount"],
+                        risk_reward_ratio=opp["risk_reward_ratio"],
+                        liquidity_check=risk_result.liquidity_check,
+                        position_size_check=risk_result.position_size_check,
+                        exposure_check=risk_result.exposure_check,
+                        event_window_check=risk_result.event_window_check,
+                        regime_check=risk_result.regime_check,
+                        catalyst_freshness_check=risk_result.catalyst_freshness_check,
+                        risk_warnings=[w.to_dict() for w in risk_result.risk_warnings],
+                        status="PENDING", priority=10 if tier == "AUTO" else 0,
+                        model_version=decision.get("source", "orchestrator"),
+                    )
+                    self.db.add(card)
+                    self.db.commit()
+                    self.db.refresh(card)
+                    created.append(card.id)
+
+                    if tier == "AUTO":
+                        await paper_execute_card_v2(self.db, card, settings=settings)
+                        executed.append(card.id)
+
+                results_by_account[account.name] = {
+                    "account_id": account.id,
+                    "market_thesis": decision.get("market_thesis"),
+                    "regime": decision.get("regime_assessment"),
+                    "fallback": decision.get("fallback", False),
+                    "tier_counts": decision.get("tier_counts", {}),
+                    "cards_created": created,
+                    "cards_executed": executed,
+                    "skipped": skipped,
+                }
+            except Exception as e:
+                logger.error(f"Orchestrated run failed for account {account.id}: {e}")
+                results_by_account[getattr(account, "name", str(account.id))] = {"error": str(e)}
+
+        return {
+            "timestamp": datetime.utcnow().isoformat(),
+            "mode": settings.trading_mode,
+            "high_quality_signals": len(high_quality_signals),
+            "accounts_processed": len(accounts),
+            "results_by_account": results_by_account,
+        }
+
     async def _generate_thesis(
         self,
         opportunity: Dict[str, Any],

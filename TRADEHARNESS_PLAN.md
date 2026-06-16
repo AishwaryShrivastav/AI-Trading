@@ -64,7 +64,7 @@ risk_snapshots, market_data_cache, symbol_master, option_chains, option_strategi
 |---|---|---|
 | **0** | Lock this plan | User approves the roadmap ✅ |
 | **1** | Paper mode + Claude provider | `LLM_PROVIDER=anthropic` writes a thesis on a sample signal; a trade card executes in PAPER mode (simulated fill → `orders_v2`/`positions_v2`, no Upstox call); 60 tests green + new tests |
-| **2** | Orchestrator + specialist agents (L4) | Pipeline emits validated orchestrator JSON (`market_thesis`, `trade_recommendations[]`, `tier` AUTO/HIL/SKIP, `risk_flags`); malformed JSON → rule-based fallback; per-day Claude cost tracked & capped |
+| **2** | Orchestrator + specialist agents (L4) ✅ | Pipeline emits validated orchestrator JSON (`market_thesis`, `trade_recommendations[]`, `tier` AUTO/HIL/SKIP, `risk_flags`); malformed JSON → rule-based fallback; per-day Claude cost tracked & capped. **Done (2a+2b+2c), live Claude pending key.** |
 | **3** | Strategy expansion + backtest harness (L3) | Each strategy backtests on 2yr history (CAGR/Sharpe/DD/win-rate), forward-bias-safe, results stored; India filters (circuit/liquidity/corp-action/earnings) enforced |
 | **4** | Risk engine extension (L5) | Simulated 15% drawdown fires R4 protocol (diagnose→paper→halt→RESUME); VIX circuit breakers, trailing/time SL, profit-separation, cost-gate tested |
 | **5** | Market-aware scheduler (L1/I3) | Jobs fire on timetable (token refresh, pre-market, signals, 15:10 force-exit, EOD, reflection); holiday calendar + dead-man's switch work |
@@ -89,6 +89,12 @@ risk_snapshots, market_data_cache, symbol_master, option_chains, option_strategi
 ## 6. Progress log
 
 - 2026-06-16 — Step 0 complete: plan reconciled & locked. Step 1 spec drafted for validation.
+- 2026-06-16 — **Step 2c complete** (pending review): orchestrator wired into v2 pipeline.
+  Standardized on v2 (multi-account) as canonical. New `services/paper_execution.py`
+  (`paper_execute_card_v2` → OrderV2+PositionV2 with is_paper); new
+  `TradeCardPipelineV2.run_orchestrated` (allocator sizes, orchestrator tiers, guardrails still
+  gate, SKIP→none / HIL→PENDING card / AUTO→create+paper-execute); `POST /api/ai-trader/orchestrate`
+  endpoint. 3 integration tests, 96 total pass. **Step 2 fully done.**
 - 2026-06-16 — **Step 2b complete** (pending review): specialist agents. Added a generic
   `LLMBase.complete_json` primitive (Anthropic + OpenAI) and `get_agent_llm()` (Haiku-tier);
   new `services/agents.py` with News (event sentiment), Technical (feature posture), Macro

@@ -86,6 +86,28 @@ async def run_full_pipeline(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/orchestrate")
+async def run_orchestrated(
+    request: GenerateSignalsRequest,
+    db: Session = Depends(get_db)
+):
+    """Orchestrator-driven run (Step 2c).
+
+    Claude decides conviction + tier per instrument; the allocator sizes.
+    AUTO -> paper-executed, HIL -> pending trade card, SKIP -> logged.
+    """
+    try:
+        pipeline = TradeCardPipelineV2(db)
+        result = await pipeline.run_orchestrated(
+            symbols=request.symbols,
+            user_id=request.user_id,
+        )
+        return {"status": "success", "orchestrated_result": result}
+    except Exception as e:
+        logger.error(f"Error running orchestrated pipeline: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/pipeline/hot-path")
 async def run_hot_path(
     request: HotPathRequest,
