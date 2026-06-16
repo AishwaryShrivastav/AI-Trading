@@ -65,7 +65,7 @@ risk_snapshots, market_data_cache, symbol_master, option_chains, option_strategi
 | **0** | Lock this plan | User approves the roadmap ✅ |
 | **1** | Paper mode + Claude provider | `LLM_PROVIDER=anthropic` writes a thesis on a sample signal; a trade card executes in PAPER mode (simulated fill → `orders_v2`/`positions_v2`, no Upstox call); 60 tests green + new tests |
 | **2** | Orchestrator + specialist agents (L4) ✅ | Pipeline emits validated orchestrator JSON (`market_thesis`, `trade_recommendations[]`, `tier` AUTO/HIL/SKIP, `risk_flags`); malformed JSON → rule-based fallback; per-day Claude cost tracked & capped. **Done (2a+2b+2c), live Claude pending key.** |
-| **3** | Strategy expansion + backtest harness (L3) | Each strategy backtests on 2yr history (CAGR/Sharpe/DD/win-rate), forward-bias-safe, results stored; India filters (circuit/liquidity/corp-action/earnings) enforced |
+| **3** | Strategy expansion + backtest harness (L3) ✅ | Each strategy backtests on history (CAGR/Sharpe/DD/win-rate), forward-bias-safe, results stored. **Done (3a harness + 3b strategies); ORB deferred to live-WebSocket; real backfill needs Upstox token.** |
 | **4** | Risk engine extension (L5) | Simulated 15% drawdown fires R4 protocol (diagnose→paper→halt→RESUME); VIX circuit breakers, trailing/time SL, profit-separation, cost-gate tested |
 | **5** | Market-aware scheduler (L1/I3) | Jobs fire on timetable (token refresh, pre-market, signals, 15:10 force-exit, EOD, reflection); holiday calendar + dead-man's switch work |
 | **6** | Telegram HIL relay (L6) | Approve a paper trade from phone → executes in paper → shows in journal; HALT/RESUME + escalation tiers work |
@@ -88,6 +88,11 @@ risk_snapshots, market_data_cache, symbol_master, option_chains, option_strategi
 
 ## 6. Progress log
 
+- 2026-06-16 — **Step 3b complete** (pending review): new daily strategies in
+  `signals/extra.py` — RSI-divergence, Bollinger-squeeze breakout, 52-week-high breakout,
+  Nifty-ETF momentum baseline (all SignalBase, ATR-based SL/TP). Registered in the backtester
+  defaults and the v1 pipeline registry. 6 new tests; 107 total pass. e2e backtest drives all 6
+  strategies. ORB still deferred (intraday). **Step 3 fully done.**
 - 2026-06-16 — **Step 3a complete** (pending review): backtest harness. Data source = Upstox
   historical (per decision). New `services/backtest/` (data_loader: cache + `backfill_from_upstox`;
   engine: forward-bias-safe walk, one-position-at-a-time, SL/TP/max-hold exits + slippage, daily

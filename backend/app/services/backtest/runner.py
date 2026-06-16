@@ -6,7 +6,10 @@ from sqlalchemy.orm import Session
 
 from ...config import get_settings
 from ...database import BacktestResult
-from ..signals import MomentumStrategy, MeanReversionStrategy
+from ..signals import (
+    MomentumStrategy, MeanReversionStrategy, RSIDivergenceStrategy,
+    BollingerSqueezeStrategy, FiftyTwoWeekHighStrategy, NiftyETFBaselineStrategy,
+)
 from .data_loader import BacktestDataLoader
 from .engine import Backtester
 
@@ -14,8 +17,15 @@ logger = logging.getLogger(__name__)
 
 
 def default_strategies():
-    """Strategies backtested by default (Step 3b adds more)."""
-    return [MomentumStrategy(), MeanReversionStrategy()]
+    """All daily-timeframe strategies backtested by default (Step 3a+3b)."""
+    return [
+        MomentumStrategy(),
+        MeanReversionStrategy(),
+        RSIDivergenceStrategy(),
+        BollingerSqueezeStrategy(),
+        FiftyTwoWeekHighStrategy(),
+        NiftyETFBaselineStrategy(),
+    ]
 
 
 async def run_backtests(

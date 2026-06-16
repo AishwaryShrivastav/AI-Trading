@@ -7,7 +7,10 @@ import pandas as pd
 
 from ..database import TradeCard, MarketDataCache, Setting
 from ..config import get_settings
-from .signals import MomentumStrategy, MeanReversionStrategy
+from .signals import (
+    MomentumStrategy, MeanReversionStrategy, RSIDivergenceStrategy,
+    BollingerSqueezeStrategy, FiftyTwoWeekHighStrategy, NiftyETFBaselineStrategy,
+)
 from .llm import OpenAIProvider, GeminiProvider, HuggingFaceProvider
 from .risk_checks import RiskChecker
 from .audit import AuditLogger
@@ -33,7 +36,11 @@ class TradeCardPipeline:
         # Initialize strategies
         self.strategies = {
             "momentum": MomentumStrategy(),
-            "mean_reversion": MeanReversionStrategy()
+            "mean_reversion": MeanReversionStrategy(),
+            "rsi_divergence": RSIDivergenceStrategy(),
+            "bollinger_squeeze": BollingerSqueezeStrategy(),
+            "fifty_two_week_high": FiftyTwoWeekHighStrategy(),
+            "etf_baseline": NiftyETFBaselineStrategy(),
         }
         
         # Initialize LLM provider
