@@ -15,7 +15,7 @@ from fastapi import Response, HTTPException
 
 from .config import get_settings
 from .database import init_db, engine, Base
-from .routers import auth, trade_cards, positions, signals, reports, upstox_advanced, accounts, ai_trader, guardrails, options
+from .routers import auth, trade_cards, positions, signals, reports, upstox_advanced, accounts, ai_trader, guardrails, options, risk
 from .schemas import HealthResponse
 from datetime import datetime
 
@@ -77,6 +77,7 @@ app.include_router(accounts.router)  # Multi-account AI Trader
 app.include_router(ai_trader.router)  # AI Trader Pipeline
 app.include_router(guardrails.router)  # Guardrails API
 app.include_router(options.router)  # Options API
+app.include_router(risk.router)  # Risk governor (drawdown protocol)
 
 
 # Health check

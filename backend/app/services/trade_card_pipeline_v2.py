@@ -290,8 +290,10 @@ class TradeCardPipelineV2:
         """
         from .orchestrator import Orchestrator
         from .paper_execution import paper_execute_card_v2
+        from .risk_governor import RiskGovernor
 
         orchestrator = orchestrator or Orchestrator(self.db)
+        governor = RiskGovernor(self.db)
 
         # Use existing ACTIVE high-quality signals (signal generation is a
         # separate stage / scheduled job).
@@ -316,6 +318,19 @@ class TradeCardPipelineV2:
                     max_cards=5,
                 )
 
+                # Risk governor: drawdown protocol gates the whole account.
+                gov_state = await governor.evaluate(account_id=account.id)
+                if governor.blocks_new_entries():
+                    results_by_account[account.name] = {
+                        "account_id": account.id, "halted": True,
+                        "reason": gov_state.get("reason"),
+                        "diagnosis": gov_state.get("diagnosis"),
+                        "cards_created": [], "cards_executed": [],
+                        "skipped": [o["symbol"] for o in opportunities],
+                    }
+                    continue
+                size_factor = governor.position_size_factor()
+
                 # Orchestrator decides tiers for this account's universe.
                 decision = await orchestrator.decide(
                     [o["symbol"] for o in opportunities] or symbols,
@@ -332,6 +347,27 @@ class TradeCardPipelineV2:
                     rec = tier_by_symbol.get(opp["symbol"].upper())
                     tier = rec["tier"] if rec else "SKIP"
                     if tier == "SKIP":
+                        skipped.append(opp["symbol"])
+                        continue
+
+                    # Apply risk-governor sizing (DERISK / post-resume window).
+                    if size_factor < 1.0 and opp.get("quantity"):
+                        new_q = max(1, int(opp["quantity"] * size_factor))
+                        ratio = new_q / opp["quantity"]
+                        opp["quantity"] = new_q
+                        opp["position_size_rupees"] = opp["position_size_rupees"] * ratio
+                        opp["risk_amount"] = opp["risk_amount"] * ratio
+                        opp["reward_amount"] = opp["reward_amount"] * ratio
+
+                    # Net-edge cost gate: skip trades that can't beat round-trip costs.
+                    from .cost_model import passes_cost_gate
+                    gate = passes_cost_gate(
+                        entry=opp["entry_price"], take_profit=opp["take_profit"],
+                        quantity=opp["quantity"], side=opp["direction"],
+                        min_net_edge_pct=settings.min_net_edge_pct,
+                        slippage_bps=getattr(settings, "paper_slippage_bps", 5.0),
+                    )
+                    if not gate["passed"]:
                         skipped.append(opp["symbol"])
                         continue
 
