@@ -43,6 +43,27 @@ class Settings(BaseSettings):
     hil_min_conviction: float = 0.50  # >= this -> HIL, below -> SKIP
     use_specialist_agents: bool = True  # enrich orchestrator context via News/Technical/Macro agents
 
+    # Risk governor — staged drawdown protocol (Step 4)
+    drawdown_derisk_pct: float = 8.0   # halve position sizes beyond this drawdown
+    drawdown_halt_pct: float = 12.0    # halt new entries + paper + self-diagnose
+    derisk_capital_factor: float = 0.5  # size multiplier in DERISK state
+    post_resume_derisk_days: int = 14   # reduced sizing window after RESUME
+    post_resume_capital_factor: float = 0.5
+
+    # Net-edge cost gate (Step 4b)
+    min_net_edge_pct: float = 0.5  # expected move to target must beat round-trip costs by this
+
+    # VIX circuit breakers (Step 4b) — India VIX thresholds
+    vix_derisk_level: float = 18.0     # >= this: reduce sizes
+    vix_derisk_factor: float = 0.6
+    vix_intraday_pause_level: float = 22.0  # >= this: pause intraday strategies
+    vix_halt_level: float = 28.0       # >= this: halt all new entries
+
+    # Trailing / time stop-loss (Step 4b)
+    trail_activate_pct: float = 2.0    # activate trailing after +2% gain
+    trail_lock_fraction: float = 0.5   # lock 50% of the peak gain
+    intraday_exit_time: str = "15:10"  # force-exit intraday positions
+
     # Risk Parameters
     max_capital_risk_percent: float = 2.0
     min_liquidity_adv: int = 1000000
@@ -53,7 +74,10 @@ class Settings(BaseSettings):
     default_trade_horizon_days: int = 3
     earnings_blackout_days: int = 2
     
-    # Scheduler
+    # Scheduler (Step 5)
+    scheduler_enabled: bool = True           # set False in tests / CI
+    scheduler_watchlist: str = "RELIANCE,TCS,INFY,HDFCBANK,ICICIBANK"
+    heartbeat_max_age_minutes: int = 30      # dead-man's switch threshold
     signal_generation_hour: int = 9
     signal_generation_minute: int = 15
     eod_report_hour: int = 16

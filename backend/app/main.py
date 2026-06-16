@@ -15,7 +15,7 @@ from fastapi import Response, HTTPException
 
 from .config import get_settings
 from .database import init_db, engine, Base
-from .routers import auth, trade_cards, positions, signals, reports, upstox_advanced, accounts, ai_trader, guardrails, options
+from .routers import auth, trade_cards, positions, signals, reports, upstox_advanced, accounts, ai_trader, guardrails, options, risk, scheduler as scheduler_router, hil as hil_router, reporting as reporting_router
 from .schemas import HealthResponse
 from datetime import datetime
 
@@ -34,19 +34,32 @@ async def lifespan(app: FastAPI):
     """Application lifespan manager."""
     # Startup
     logger.info("Starting AI Trading System...")
-    
+
     # Initialize database
     Base.metadata.create_all(bind=engine)
     logger.info("Database initialized")
-    
-    # TODO: Initialize scheduler for daily jobs
-    # scheduler = AsyncIOScheduler()
-    # scheduler.start()
-    
+
+    # Dead-man's switch: alert if we missed heartbeats from a previous run
+    try:
+        from .services.market_jobs import check_missed_heartbeat
+        hb = check_missed_heartbeat()
+        if hb.get("stale"):
+            logger.critical("[STARTUP] Dead-man's switch: %s", hb["reason"])
+    except Exception as exc:  # pragma: no cover
+        logger.warning("Heartbeat check on startup failed: %s", exc)
+
+    # Start market-aware scheduler (disabled in tests via SCHEDULER_ENABLED=false)
+    if settings.scheduler_enabled:
+        from .services.scheduler import SchedulerService
+        SchedulerService.get().start()
+
     yield
-    
+
     # Shutdown
     logger.info("Shutting down AI Trading System...")
+    if settings.scheduler_enabled:
+        from .services.scheduler import SchedulerService
+        SchedulerService.get().shutdown()
 
 
 # Create FastAPI app
@@ -77,6 +90,10 @@ app.include_router(accounts.router)  # Multi-account AI Trader
 app.include_router(ai_trader.router)  # AI Trader Pipeline
 app.include_router(guardrails.router)  # Guardrails API
 app.include_router(options.router)  # Options API
+app.include_router(risk.router)  # Risk governor (drawdown protocol)
+app.include_router(scheduler_router.router)  # Scheduler status
+app.include_router(hil_router.router)       # HIL relay (SSE + approve/halt)
+app.include_router(reporting_router.router) # Step 7 reporting (trust scores, regime, reflections)
 
 
 # Health check
@@ -106,7 +123,7 @@ async def metrics():
 frontend_path = Path(__file__).parent.parent.parent / "frontend"
 if frontend_path.exists():
     app.mount("/static", StaticFiles(directory=str(frontend_path / "static")), name="static")
-    
+
     @app.get("/")
     async def serve_frontend():
         """Serve frontend HTML."""
@@ -114,6 +131,22 @@ if frontend_path.exists():
         if index_file.exists():
             return FileResponse(index_file)
         return {"message": "Frontend not found. Please create frontend/index.html"}
+
+    @app.get("/hil")
+    async def serve_hil():
+        """Serve the HIL (Human-in-the-Loop) relay page."""
+        hil_file = frontend_path / "hil.html"
+        if hil_file.exists():
+            return FileResponse(hil_file)
+        return {"message": "HIL page not found"}
+
+    @app.get("/dashboard")
+    async def serve_dashboard():
+        """Serve the performance dashboard page."""
+        dash_file = frontend_path / "dashboard.html"
+        if dash_file.exists():
+            return FileResponse(dash_file)
+        return {"message": "Dashboard page not found"}
 else:
     @app.get("/")
     async def root():
@@ -121,7 +154,8 @@ else:
         return {
             "message": "AI Trading System API",
             "docs": "/docs",
-            "health": "/health"
+            "health": "/health",
+            "hil": "/hil",
         }
 
 

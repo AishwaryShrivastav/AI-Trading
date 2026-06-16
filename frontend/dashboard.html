@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TradeHarness — Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    body { background: #0f172a; color: #e2e8f0; font-family: 'Inter', sans-serif; }
+    .card { background: #1e293b; border: 1px solid #334155; border-radius: 0.75rem; padding: 1.25rem; }
+    .badge { display: inline-block; padding: 0.15rem 0.6rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; }
+    .regime-TRENDING_UP    { background: #166534; color: #86efac; }
+    .regime-TRENDING_DOWN  { background: #7f1d1d; color: #fca5a5; }
+    .regime-RANGING        { background: #854d0e; color: #fde68a; }
+    .regime-HIGH_VOL       { background: #581c87; color: #d8b4fe; }
+    .regime-UNKNOWN        { background: #334155; color: #94a3b8; }
+    .bar-fill { background: #3b82f6; height: 10px; border-radius: 4px; transition: width 0.4s; }
+    .bar-bg   { background: #334155; height: 10px; border-radius: 4px; }
+    .pnl-pos  { color: #4ade80; }
+    .pnl-neg  { color: #f87171; }
+    .status-PENDING_REVIEW { color: #fbbf24; }
+    .status-APPROVED       { color: #4ade80; }
+    .status-REJECTED       { color: #f87171; }
+  </style>
+</head>
+<body class="min-h-screen p-4">
+
+  <!-- Header -->
+  <div class="flex items-center justify-between mb-6">
+    <div>
+      <h1 class="text-2xl font-bold text-white">TradeHarness</h1>
+      <p class="text-sm text-slate-400">Performance Dashboard</p>
+    </div>
+    <div class="flex gap-3">
+      <a href="/hil" class="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm font-medium transition">HIL Relay</a>
+      <button onclick="refreshAll()" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-medium transition">Refresh</button>
+    </div>
+  </div>
+
+  <!-- Top row: regime badge + VIX + summary stats -->
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+    <div class="card">
+      <p class="text-xs text-slate-400 mb-1">Market Regime</p>
+      <div id="regime-badge" class="badge regime-UNKNOWN">UNKNOWN</div>
+    </div>
+    <div class="card">
+      <p class="text-xs text-slate-400 mb-1">India VIX</p>
+      <p id="vix-val" class="text-xl font-bold text-white">—</p>
+    </div>
+    <div class="card">
+      <p class="text-xs text-slate-400 mb-1">14d Cumulative P&L</p>
+      <p id="cum-pnl" class="text-xl font-bold">—</p>
+    </div>
+    <div class="card">
+      <p class="text-xs text-slate-400 mb-1">Pending Reflections</p>
+      <p id="pending-reflections" class="text-xl font-bold text-white">—</p>
+    </div>
+  </div>
+
+  <!-- Equity sparkline -->
+  <div class="card mb-6">
+    <h2 class="text-sm font-semibold text-slate-300 mb-3">14-Day Equity Curve</h2>
+    <canvas id="equity-chart" height="80"></canvas>
+  </div>
+
+  <!-- Trust scores + attribution side-by-side -->
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+
+    <!-- Trust score bars -->
+    <div class="card">
+      <h2 class="text-sm font-semibold text-slate-300 mb-3">Strategy Trust Scores</h2>
+      <div id="trust-list" class="space-y-3">
+        <p class="text-slate-500 text-sm">Loading…</p>
+      </div>
+    </div>
+
+    <!-- Regime weights -->
+    <div class="card">
+      <h2 class="text-sm font-semibold text-slate-300 mb-3">Regime Strategy Weights</h2>
+      <div id="regime-weights" class="space-y-3">
+        <p class="text-slate-500 text-sm">Loading…</p>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- P&L attribution table -->
+  <div class="card mb-6">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-sm font-semibold text-slate-300">30-Day P&L Attribution</h2>
+      <span id="attribution-total" class="text-sm text-slate-400"></span>
+    </div>
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="text-slate-500 text-xs border-b border-slate-700">
+          <th class="text-left pb-2">Strategy</th>
+          <th class="text-right pb-2">P&L (INR)</th>
+          <th class="text-right pb-2">Share</th>
+        </tr>
+      </thead>
+      <tbody id="attribution-body">
+        <tr><td colspan="3" class="text-slate-500 py-2">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Weekly reflections -->
+  <div class="card mb-6">
+    <h2 class="text-sm font-semibold text-slate-300 mb-3">Weekly Reflections</h2>
+    <div id="reflections-list" class="space-y-4">
+      <p class="text-slate-500 text-sm">Loading…</p>
+    </div>
+  </div>
+
+  <p class="text-center text-slate-600 text-xs mt-4">Last updated: <span id="last-updated">—</span></p>
+
+  <script>
+    let equityChart = null;
+
+    async function api(path) {
+      const r = await fetch(path);
+      if (!r.ok) throw new Error(`${path}: ${r.status}`);
+      return r.json();
+    }
+
+    function pnlClass(v) { return parseFloat(v) >= 0 ? 'pnl-pos' : 'pnl-neg'; }
+    function fmt(v, dec=2) { return (parseFloat(v)||0).toFixed(dec); }
+
+    async function loadRegime() {
+      try {
+        const d = await api('/api/reporting/regime');
+        const regime = d.regime || 'UNKNOWN';
+        const badge = document.getElementById('regime-badge');
+        badge.textContent = regime;
+        badge.className = `badge regime-${regime}`;
+
+        const vix = d.vix;
+        document.getElementById('vix-val').textContent = vix != null ? fmt(vix, 1) : '—';
+
+        const weights = d.strategy_weights || {};
+        const el = document.getElementById('regime-weights');
+        const keys = Object.keys(weights);
+        if (!keys.length) { el.innerHTML = '<p class="text-slate-500 text-sm">No weights available</p>'; return; }
+        el.innerHTML = keys.map(s => {
+          const w = weights[s];
+          const pct = Math.round(w * 100);
+          return `<div>
+            <div class="flex justify-between text-xs mb-1">
+              <span class="text-slate-300">${s}</span>
+              <span class="text-slate-400">${pct}%</span>
+            </div>
+            <div class="bar-bg"><div class="bar-fill" style="width:${pct}%"></div></div>
+          </div>`;
+        }).join('');
+      } catch(e) { console.error('regime', e); }
+    }
+
+    async function loadTrustScores() {
+      try {
+        const d = await api('/api/reporting/trust-scores');
+        const scores = d.trust_scores || [];
+        const el = document.getElementById('trust-list');
+        if (!scores.length) { el.innerHTML = '<p class="text-slate-500 text-sm">No trust scores yet</p>'; return; }
+        el.innerHTML = scores.map(s => {
+          const pct = Math.round((s.trust_score || 0) * 100);
+          const wr = Math.round((s.rolling_win_rate || 0) * 100);
+          return `<div>
+            <div class="flex justify-between text-xs mb-1">
+              <span class="text-slate-300">${s.strategy}</span>
+              <span class="text-slate-400">${pct}% trust · ${wr}% WR · ${s.trade_count||0} trades</span>
+            </div>
+            <div class="bar-bg"><div class="bar-fill" style="width:${pct}%"></div></div>
+          </div>`;
+        }).join('');
+      } catch(e) { console.error('trust', e); }
+    }
+
+    async function loadEquityCurve() {
+      try {
+        const d = await api('/api/reporting/equity-curve?days=14');
+        const curve = d.curve || [];
+        const cumPnl = d.total_pnl_inr || 0;
+        const el = document.getElementById('cum-pnl');
+        el.textContent = `₹${fmt(cumPnl)}`;
+        el.className = `text-xl font-bold ${pnlClass(cumPnl)}`;
+
+        const labels = curve.map(c => c.date.slice(5));
+        const data   = curve.map(c => c.cumulative_pnl);
+
+        if (equityChart) equityChart.destroy();
+        const ctx = document.getElementById('equity-chart').getContext('2d');
+        equityChart = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels,
+            datasets: [{
+              label: 'Cumulative P&L (INR)',
+              data,
+              borderColor: '#3b82f6',
+              backgroundColor: 'rgba(59,130,246,0.1)',
+              fill: true,
+              tension: 0.3,
+              pointRadius: 3,
+              pointHoverRadius: 5,
+            }]
+          },
+          options: {
+            responsive: true,
+            plugins: { legend: { display: false } },
+            scales: {
+              x: { grid: { color: '#1e293b' }, ticks: { color: '#64748b', font: { size: 10 } } },
+              y: { grid: { color: '#1e293b' }, ticks: { color: '#64748b', font: { size: 10 } } },
+            }
+          }
+        });
+      } catch(e) { console.error('equity', e); }
+    }
+
+    async function loadAttribution() {
+      try {
+        const d = await api('/api/reporting/attribution?days=30');
+        const items = d.attribution || [];
+        document.getElementById('attribution-total').textContent =
+          `Total: ₹${fmt(d.total_pnl_inr)} (30d)`;
+        const tbody = document.getElementById('attribution-body');
+        if (!items.length) { tbody.innerHTML = '<tr><td colspan="3" class="text-slate-500 py-2">No closed trades in 30 days</td></tr>'; return; }
+        tbody.innerHTML = items.map(a => `
+          <tr class="border-b border-slate-800">
+            <td class="py-2 text-slate-300">${a.strategy}</td>
+            <td class="py-2 text-right ${pnlClass(a.pnl_inr)}">₹${fmt(a.pnl_inr)}</td>
+            <td class="py-2 text-right text-slate-400">${fmt(a.share_pct, 1)}%</td>
+          </tr>`).join('');
+      } catch(e) { console.error('attribution', e); }
+    }
+
+    async function loadReflections() {
+      try {
+        const d = await api('/api/reporting/reflection');
+        const items = d.reflections || [];
+        const pending = items.filter(r => r.status === 'PENDING_REVIEW').length;
+        document.getElementById('pending-reflections').textContent = pending;
+
+        const el = document.getElementById('reflections-list');
+        if (!items.length) { el.innerHTML = '<p class="text-slate-500 text-sm">No weekly reflections yet</p>'; return; }
+        el.innerHTML = items.map(r => {
+          const refl = r.reflection || {};
+          const obs = (refl.observations || []).slice(0, 3);
+          return `<div class="border border-slate-700 rounded-lg p-3">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-sm font-medium text-slate-300">${r.period || '—'}</span>
+              <span class="badge status-${r.status}">${r.status}</span>
+            </div>
+            ${r.total_pnl_inr != null ? `<p class="text-xs text-slate-400 mb-2">P&L: <span class="${pnlClass(r.total_pnl_inr)}">₹${fmt(r.total_pnl_inr)}</span> · ${r.total_trades||0} trades</p>` : ''}
+            ${obs.length ? `<ul class="text-xs text-slate-400 list-disc list-inside space-y-0.5">${obs.map(o=>`<li>${o}</li>`).join('')}</ul>` : ''}
+            ${r.status === 'PENDING_REVIEW' ? `
+              <div class="flex gap-2 mt-3">
+                <button onclick="approveReflection(${r.id})" class="px-3 py-1 bg-green-700 hover:bg-green-600 rounded text-xs font-medium transition">Approve</button>
+                <button onclick="rejectReflection(${r.id})"  class="px-3 py-1 bg-red-800  hover:bg-red-700  rounded text-xs font-medium transition">Reject</button>
+              </div>` : ''}
+          </div>`;
+        }).join('');
+      } catch(e) { console.error('reflections', e); }
+    }
+
+    async function approveReflection(id) {
+      if (!confirm(`Approve reflection #${id}?`)) return;
+      try {
+        await fetch(`/api/reporting/reflection/${id}/approve?reviewed_by=human`, { method: 'POST' });
+        loadReflections();
+      } catch(e) { alert('Approve failed: ' + e); }
+    }
+
+    async function rejectReflection(id) {
+      if (!confirm(`Reject reflection #${id}?`)) return;
+      try {
+        await fetch(`/api/reporting/reflection/${id}/reject?reviewed_by=human`, { method: 'POST' });
+        loadReflections();
+      } catch(e) { alert('Reject failed: ' + e); }
+    }
+
+    function refreshAll() {
+      Promise.all([loadRegime(), loadTrustScores(), loadEquityCurve(), loadAttribution(), loadReflections()])
+        .then(() => { document.getElementById('last-updated').textContent = new Date().toLocaleTimeString(); });
+    }
+
+    refreshAll();
+  </script>
+</body>
+</html>

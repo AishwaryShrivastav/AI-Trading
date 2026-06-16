@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>TradeHarness HIL</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+  .card-enter { animation: slideIn 0.3s ease-out; }
+  @keyframes slideIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+  .pulse-dot { animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+  #activity { scroll-behavior: smooth; }
+</style>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen">
+
+<!-- ═══════════════════════════════ TOP BAR ═══════════════════════════════ -->
+<div class="sticky top-0 z-50 bg-gray-900 border-b border-gray-800 px-4 py-3">
+  <div class="max-w-2xl mx-auto flex items-center justify-between gap-3 flex-wrap">
+    <div class="flex items-center gap-2">
+      <span class="text-lg font-bold text-white">TradeHarness</span>
+      <span class="text-xs font-semibold text-gray-400 uppercase tracking-widest">HIL</span>
+    </div>
+    <div class="flex items-center gap-3 text-xs flex-wrap">
+      <!-- SSE connection -->
+      <div class="flex items-center gap-1.5">
+        <span id="sse-dot" class="w-2 h-2 rounded-full bg-red-500"></span>
+        <span id="sse-label" class="text-gray-400">disconnected</span>
+      </div>
+      <!-- Trading mode -->
+      <span id="mode-badge" class="px-2 py-0.5 rounded bg-blue-800 text-blue-200 font-medium">PAPER</span>
+      <!-- Market window -->
+      <span id="market-badge" class="px-2 py-0.5 rounded bg-gray-700 text-gray-300 font-medium">CLOSED</span>
+      <!-- Risk state -->
+      <span id="risk-badge" class="px-2 py-0.5 rounded bg-green-900 text-green-300 font-medium">ACTIVE</span>
+      <!-- Pending count -->
+      <span id="pending-count" class="px-2 py-0.5 rounded-full bg-orange-700 text-white font-bold text-xs hidden">0</span>
+    </div>
+  </div>
+</div>
+
+<div class="max-w-2xl mx-auto px-4 pb-10 pt-4 space-y-6">
+
+  <!-- ═══════════════════════════ EMERGENCY CONTROLS ═════════════════════ -->
+  <div class="flex gap-3">
+    <button id="halt-btn"
+      class="flex-1 bg-red-700 hover:bg-red-600 active:scale-95 transition text-white font-bold py-3 rounded-xl text-sm uppercase tracking-wide"
+      onclick="doHalt()">
+      ⛔ Emergency HALT
+    </button>
+    <button id="resume-btn"
+      class="flex-1 bg-green-700 hover:bg-green-600 active:scale-95 transition text-white font-bold py-3 rounded-xl text-sm uppercase tracking-wide hidden"
+      onclick="doResume()">
+      ✅ Resume Trading
+    </button>
+  </div>
+
+  <!-- ════════════════════════ PENDING APPROVALS ═════════════════════════ -->
+  <div>
+    <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">Pending Approvals</h2>
+    <div id="cards-list" class="space-y-3">
+      <div id="empty-state" class="text-center text-gray-600 py-10 text-sm">No pending approvals</div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════ ACTIVITY FEED ═════════════════════════════ -->
+  <div>
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-widest">Activity</h2>
+      <button onclick="clearActivity()" class="text-xs text-gray-600 hover:text-gray-400">Clear</button>
+    </div>
+    <div id="activity" class="bg-gray-900 rounded-xl p-3 space-y-1.5 max-h-72 overflow-y-auto text-xs font-mono">
+      <div class="text-gray-600">Connecting to stream…</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ─────────────────────────────── State ─────────────────────────────────────
+let pendingCards = {};
+let activityLines = [];
+const MAX_ACTIVITY = 80;
+
+// ─────────────────────────────── Init ──────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  loadStatus();
+  loadCards();
+  connectSSE();
+  // Refresh status every 30s
+  setInterval(loadStatus, 30000);
+});
+
+// ─────────────────────────────── API ───────────────────────────────────────
+async function api(method, path, body) {
+  const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(path, opts);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || res.statusText);
+  }
+  return res.json();
+}
+
+async function loadStatus() {
+  try {
+    const s = await api('GET', '/api/hil/status');
+    updateStatusBar(s);
+  } catch(e) { /* ignore polling errors */ }
+}
+
+async function loadCards() {
+  try {
+    const r = await api('GET', '/api/hil/cards');
+    pendingCards = {};
+    document.getElementById('cards-list').innerHTML = '';
+    document.getElementById('empty-state') && document.getElementById('cards-list').appendChild(
+      (() => { const d=document.createElement('div'); d.id='empty-state'; d.className='text-center text-gray-600 py-10 text-sm'; d.textContent='No pending approvals'; return d; })()
+    );
+    r.cards.forEach(addCard);
+  } catch(e) { logActivity('error', `Failed to load cards: ${e.message}`); }
+}
+
+// ─────────────────────────────── SSE ───────────────────────────────────────
+function connectSSE() {
+  const es = new EventSource('/api/hil/stream');
+
+  es.onopen = () => {
+    setSseStatus(true);
+    logActivity('info', 'Connected to live stream');
+  };
+
+  es.onmessage = (e) => {
+    try {
+      const evt = JSON.parse(e.data);
+      handleEvent(evt.type, evt.data);
+    } catch {}
+  };
+
+  es.onerror = () => {
+    setSseStatus(false);
+    logActivity('warn', 'Stream disconnected — retrying…');
+    // Browser retries automatically
+  };
+}
+
+function handleEvent(type, data) {
+  switch (type) {
+    case 'connected':
+      break;
+    case 'new_card':
+      addCard(data);
+      logActivity('info', `New card: ${data.direction} ${data.symbol} ×${data.quantity} (conf ${pct(data.confidence)})`);
+      if ('vibrate' in navigator) navigator.vibrate([100, 50, 100]);
+      break;
+    case 'card_approved':
+      removeCard(data.card_id);
+      logActivity('success', `✓ Approved ${data.symbol} ×${data.quantity}${data.half_size ? ' (½ size)' : ''}`);
+      loadStatus();
+      break;
+    case 'card_rejected':
+      removeCard(data.card_id);
+      logActivity('warn', `✗ Rejected ${data.symbol}: ${data.reason}`);
+      loadStatus();
+      break;
+    case 'risk_alert':
+      logActivity(data.level === 'HALTED' ? 'error' : 'success', `Risk → ${data.level}: ${data.reason}`);
+      loadStatus();
+      break;
+    case 'morning_briefing':
+      logActivity('info', `☀ Morning briefing: ${JSON.stringify(data)}`);
+      break;
+    case 'force_exit':
+      logActivity('warn', `⏰ Force-exit: ${data.closed} position(s) closed`);
+      break;
+    case 'eod_report':
+      logActivity('info', `📊 EOD report ready`);
+      break;
+    default:
+      logActivity('info', `${type}: ${JSON.stringify(data)}`);
+  }
+}
+
+// ─────────────────────────────── Cards ─────────────────────────────────────
+function addCard(c) {
+  if (!c.id) return;
+  pendingCards[c.id] = c;
+  const empty = document.getElementById('empty-state');
+  if (empty) empty.remove();
+
+  const el = document.createElement('div');
+  el.id = `card-${c.id}`;
+  el.className = 'card-enter bg-gray-900 border border-gray-700 rounded-2xl p-4 space-y-3';
+
+  const dir = c.direction || 'LONG';
+  const dirColor = dir === 'LONG' || dir === 'BUY' ? 'text-green-400' : 'text-red-400';
+  const confPct = pct(c.confidence || c.conviction);
+  const rr = c.risk_reward ? `R/R ${c.risk_reward.toFixed(1)}x` : '';
+  const edge = c.edge_pct ? `Edge ${c.edge_pct.toFixed(1)}%` : '';
+
+  el.innerHTML = `
+    <div class="flex items-start justify-between gap-3">
+      <div>
+        <div class="flex items-center gap-2 flex-wrap">
+          <span class="font-bold text-white text-base">${c.symbol}</span>
+          <span class="font-semibold ${dirColor}">${dir}</span>
+          <span class="text-gray-400 text-sm">×${c.quantity}</span>
+          ${c.strategy ? `<span class="text-xs bg-gray-800 text-gray-400 px-1.5 py-0.5 rounded">${c.strategy}</span>` : ''}
+        </div>
+        <div class="text-xs text-gray-400 mt-1 flex flex-wrap gap-3">
+          <span>Entry <span class="text-white">₹${fmt(c.entry_price)}</span></span>
+          <span>SL <span class="text-red-400">₹${fmt(c.stop_loss)}</span></span>
+          <span>TP <span class="text-green-400">₹${fmt(c.take_profit)}</span></span>
+        </div>
+      </div>
+      <div class="text-right shrink-0">
+        <div class="text-lg font-bold text-white">${confPct}</div>
+        <div class="text-xs text-gray-400">confidence</div>
+      </div>
+    </div>
+    ${(rr || edge) ? `<div class="text-xs text-gray-500 flex gap-3">${rr ? `<span>${rr}</span>` : ''}${edge ? `<span>${edge}</span>` : ''}</div>` : ''}
+    ${c.thesis ? `<p class="text-xs text-gray-400 leading-relaxed line-clamp-3">${escHtml(c.thesis)}</p>` : ''}
+    <div class="flex gap-2 pt-1">
+      <button onclick="doApprove(${c.id})"
+        class="flex-1 bg-green-700 hover:bg-green-600 active:scale-95 transition text-white font-semibold py-2.5 rounded-xl text-sm">
+        Approve
+      </button>
+      <button onclick="doHalf(${c.id})"
+        class="flex-1 bg-yellow-700 hover:bg-yellow-600 active:scale-95 transition text-white font-semibold py-2.5 rounded-xl text-sm">
+        ½ Size
+      </button>
+      <button onclick="doReject(${c.id})"
+        class="flex-1 bg-gray-700 hover:bg-gray-600 active:scale-95 transition text-white font-semibold py-2.5 rounded-xl text-sm">
+        Reject
+      </button>
+    </div>`;
+
+  document.getElementById('cards-list').prepend(el);
+  updatePendingBadge();
+}
+
+function removeCard(id) {
+  delete pendingCards[id];
+  const el = document.getElementById(`card-${id}`);
+  if (el) {
+    el.style.transition = 'opacity 0.3s, transform 0.3s';
+    el.style.opacity = '0';
+    el.style.transform = 'translateX(30px)';
+    setTimeout(() => {
+      el.remove();
+      if (!Object.keys(pendingCards).length) {
+        const list = document.getElementById('cards-list');
+        list.innerHTML = '<div id="empty-state" class="text-center text-gray-600 py-10 text-sm">No pending approvals</div>';
+      }
+    }, 300);
+  }
+  updatePendingBadge();
+}
+
+// ─────────────────────────────── Actions ───────────────────────────────────
+async function doApprove(id) {
+  await withLoading(`card-${id}`, () => api('POST', `/api/hil/cards/${id}/approve`));
+}
+
+async function doHalf(id) {
+  await withLoading(`card-${id}`, () => api('POST', `/api/hil/cards/${id}/half`));
+}
+
+async function doReject(id) {
+  const reason = prompt('Rejection reason (optional):') || 'Manual rejection via HIL';
+  await withLoading(`card-${id}`, () => api('POST', `/api/hil/cards/${id}/reject?reason=${encodeURIComponent(reason)}`));
+}
+
+async function doHalt() {
+  if (!confirm('Trigger EMERGENCY HALT? This stops all new entries immediately.')) return;
+  try {
+    await api('POST', '/api/hil/halt');
+    logActivity('error', '⛔ EMERGENCY HALT triggered');
+    loadStatus();
+  } catch(e) { logActivity('error', `HALT failed: ${e.message}`); }
+}
+
+async function doResume() {
+  if (!confirm('Resume trading? Sizing will be reduced for 14 days.')) return;
+  try {
+    await api('POST', '/api/hil/resume');
+    logActivity('success', '✅ Trading RESUMED');
+    loadStatus();
+  } catch(e) { logActivity('error', `Resume failed: ${e.message}`); }
+}
+
+async function withLoading(elId, fn) {
+  const el = document.getElementById(elId);
+  if (el) el.style.opacity = '0.5';
+  try {
+    await fn();
+  } catch(e) {
+    logActivity('error', e.message);
+    if (el) el.style.opacity = '1';
+  }
+}
+
+// ─────────────────────────────── UI helpers ────────────────────────────────
+function updateStatusBar(s) {
+  const modeBadge = document.getElementById('mode-badge');
+  modeBadge.textContent = (s.trading_mode || 'PAPER').toUpperCase();
+  modeBadge.className = `px-2 py-0.5 rounded font-medium text-xs ${s.trading_mode === 'live' ? 'bg-red-800 text-red-200' : 'bg-blue-800 text-blue-200'}`;
+
+  const mktBadge = document.getElementById('market-badge');
+  mktBadge.textContent = s.market_window_open ? 'OPEN' : 'CLOSED';
+  mktBadge.className = `px-2 py-0.5 rounded font-medium text-xs ${s.market_window_open ? 'bg-green-900 text-green-300' : 'bg-gray-700 text-gray-400'}`;
+
+  const riskBadge = document.getElementById('risk-badge');
+  const riskColors = { ACTIVE: 'bg-green-900 text-green-300', DERISK: 'bg-yellow-900 text-yellow-300', HALTED: 'bg-red-900 text-red-300' };
+  riskBadge.textContent = s.risk_state || 'ACTIVE';
+  riskBadge.className = `px-2 py-0.5 rounded font-medium text-xs ${riskColors[s.risk_state] || riskColors.ACTIVE}`;
+
+  const resumeBtn = document.getElementById('resume-btn');
+  resumeBtn.classList.toggle('hidden', s.risk_state !== 'HALTED');
+
+  updatePendingBadge(s.pending_approvals);
+}
+
+function updatePendingBadge(count) {
+  const n = count !== undefined ? count : Object.keys(pendingCards).length;
+  const badge = document.getElementById('pending-count');
+  badge.textContent = n;
+  badge.classList.toggle('hidden', n === 0);
+}
+
+function setSseStatus(ok) {
+  const dot = document.getElementById('sse-dot');
+  const lbl = document.getElementById('sse-label');
+  dot.className = `w-2 h-2 rounded-full ${ok ? 'bg-green-500 pulse-dot' : 'bg-red-500'}`;
+  lbl.textContent = ok ? 'live' : 'disconnected';
+}
+
+function logActivity(level, msg) {
+  const colors = { info: 'text-gray-300', success: 'text-green-400', warn: 'text-yellow-400', error: 'text-red-400' };
+  const ts = new Date().toLocaleTimeString('en-IN', { hour12: false });
+  const div = document.createElement('div');
+  div.className = colors[level] || colors.info;
+  div.textContent = `${ts}  ${msg}`;
+  const feed = document.getElementById('activity');
+  feed.prepend(div);
+  activityLines.push(div);
+  if (activityLines.length > MAX_ACTIVITY) {
+    activityLines.shift().remove();
+  }
+}
+
+function clearActivity() {
+  document.getElementById('activity').innerHTML = '';
+  activityLines = [];
+}
+
+function pct(v) { return v != null ? `${Math.round(v * 100)}%` : '—'; }
+function fmt(v)  { return v != null ? Number(v).toFixed(2) : '—'; }
+function escHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+</script>
+</body>
+</html>

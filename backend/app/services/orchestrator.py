@@ -114,6 +114,18 @@ class Orchestrator:
             for c in recent
         ]
 
+        try:
+            from .regime_classifier import RegimeClassifier
+            regime_data = RegimeClassifier(self.db).get_all_weights()
+        except Exception:
+            regime_data = {"regime": "unknown", "strategy_weights": {}, "vix": None}
+
+        try:
+            from .trust_scoring import get_all_trust_scores
+            trust_scores = get_all_trust_scores(self.db)
+        except Exception:
+            trust_scores = []
+
         return {
             "as_of": datetime.utcnow().isoformat(),
             "universe": symbols,
@@ -121,8 +133,10 @@ class Orchestrator:
             "open_positions": open_positions,
             "risk_budget": risk_budget,
             "recent_decisions": recent_decisions,
-            # regime/sentiment are enriched by specialist agents in Step 2b.
-            "regime": "unknown",
+            "regime": regime_data.get("regime", "unknown"),
+            "regime_weights": regime_data.get("strategy_weights", {}),
+            "vix": regime_data.get("vix"),
+            "trust_scores": trust_scores,
             "sentiment": {},
         }
 

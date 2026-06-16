@@ -868,6 +868,38 @@ class BacktestResult(Base):
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
 
+class StrategyTrustScore(Base):
+    """Rolling trust score per strategy — updated by the EOD job (Step 7)."""
+    __tablename__ = "strategy_trust_scores"
+
+    id = Column(Integer, primary_key=True, index=True)
+    strategy = Column(String(50), nullable=False, unique=True, index=True)
+    trust_score = Column(Float, default=0.5)   # 0–1, EMA-smoothed
+    rolling_win_rate = Column(Float)
+    rolling_return_pct = Column(Float)
+    trade_count = Column(Integer, default=0)   # cumulative trades seen
+    last_day_score = Column(Float)             # raw score from last update
+    last_updated = Column(DateTime, default=datetime.utcnow)
+    details = Column(JSON)                     # latest day breakdown for debugging
+
+
+class WeeklyReflection(Base):
+    """Human-gated weekly LLM reflection (Step 7)."""
+    __tablename__ = "weekly_reflections"
+
+    id = Column(Integer, primary_key=True, index=True)
+    week_start = Column(DateTime, nullable=False, index=True)
+    week_end = Column(DateTime, nullable=False)
+    performance_data = Column(JSON)   # aggregated per-strategy stats for the week
+    reflection = Column(JSON)         # LLM output: observations, suggestions, risk_notes
+    status = Column(String(20), default="PENDING_REVIEW", index=True)
+    # PENDING_REVIEW, APPROVED, REJECTED
+    applied_suggestions = Column(JSON)    # populated after approval
+    reviewed_at = Column(DateTime)
+    reviewed_by = Column(String(50))
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
 # Database initialization
 def init_db():
     """Initialize database tables."""
