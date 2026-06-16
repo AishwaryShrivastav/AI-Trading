@@ -89,7 +89,8 @@ async def health_check():
         version="1.0.0",
         database="sqlite",
         broker="upstox",
-        llm_provider=settings.llm_provider
+        llm_provider=settings.llm_provider,
+        trading_mode=settings.trading_mode
     )
 
 

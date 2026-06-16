@@ -57,6 +57,52 @@ class LLMBase(ABC):
         """
         pass
     
+    async def orchestrate_decisions(
+        self,
+        context: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Act as the orchestrator brain: weigh all signals + context and decide.
+
+        Unlike ``generate_trade_analysis`` (which explains a single pre-decided
+        signal), this method is the decision-maker. Given an assembled context
+        (regime, candidate signals, open positions, risk budget, recent
+        outcomes) it returns a structured plan.
+
+        Args:
+            context: assembled decision context (see Orchestrator.assemble_context)
+
+        Returns:
+            Dict with:
+                - market_thesis: str
+                - regime_assessment: str
+                - trade_recommendations: List[{
+                      instrument, direction (LONG|SHORT), conviction (0..1),
+                      size_pct, stop_loss, reasoning
+                  }]
+                - risk_flags: List[str]
+
+        Conviction→tier routing (AUTO/HIL/SKIP) is applied deterministically by
+        the Orchestrator service, not by the model.
+        """
+        raise NotImplementedError(
+            f"{self.__class__.__name__} does not implement orchestrate_decisions"
+        )
+
+    async def complete_json(
+        self,
+        system: str,
+        user: str,
+        max_tokens: int = 1024,
+    ) -> Dict[str, Any]:
+        """Generic structured-output primitive used by specialist agents.
+
+        Sends a system + user prompt and returns the parsed JSON object. Keeps
+        agent code provider-agnostic.
+        """
+        raise NotImplementedError(
+            f"{self.__class__.__name__} does not implement complete_json"
+        )
+
     def get_model_version(self) -> str:
         """Return the model version/name being used."""
         return self.model

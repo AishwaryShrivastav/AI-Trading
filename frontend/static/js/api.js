@@ -50,13 +50,17 @@ class APIClient {
         return this.request(`/api/trade-cards/${id}`);
     }
 
-    async approveTradeCard(id, userId = 'default_user', notes = null) {
+    async approveTradeCard(id, userId = 'default_user', notes = null, quantity = null, orderType = null, price = null, triggerPrice = null) {
         return this.request(`/api/trade-cards/${id}/approve`, {
             method: 'POST',
             body: JSON.stringify({
                 trade_card_id: id,
                 user_id: userId,
-                notes: notes
+                notes: notes,
+                quantity: quantity,
+                order_type: orderType,
+                price: price,
+                trigger_price: triggerPrice
             }),
         });
     }

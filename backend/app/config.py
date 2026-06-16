@@ -24,10 +24,25 @@ class Settings(BaseSettings):
     # OpenAI API
     openai_api_key: str = ""
     openai_model: str = "gpt-4-turbo-preview"
-    
-    # LLM Provider
-    llm_provider: str = "openai"  # openai, gemini, huggingface
-    
+
+    # Anthropic (Claude) API — default orchestrator brain per TradeHarness plan
+    anthropic_api_key: str = ""
+    anthropic_model: str = "claude-opus-4-8"  # orchestrator (heavy reasoning)
+    anthropic_agent_model: str = "claude-haiku-4-5"  # specialist agents (cheap, high-freq)
+
+    # LLM Provider — anthropic (default when key present), openai, gemini, huggingface
+    llm_provider: str = "anthropic"
+
+    # Trading mode — paper (simulated fills, safe) or live (real Upstox orders)
+    trading_mode: str = "paper"  # paper | live
+    paper_slippage_bps: float = 5.0  # simulated slippage in basis points
+
+    # Orchestrator (Claude brain) cost control
+    daily_llm_cost_cap_inr: float = 200.0  # hard daily cap; rule-based fallback beyond
+    auto_execute_conviction: float = 0.75  # >= this and no risk flags -> AUTO
+    hil_min_conviction: float = 0.50  # >= this -> HIL, below -> SKIP
+    use_specialist_agents: bool = True  # enrich orchestrator context via News/Technical/Macro agents
+
     # Risk Parameters
     max_capital_risk_percent: float = 2.0
     min_liquidity_adv: int = 1000000

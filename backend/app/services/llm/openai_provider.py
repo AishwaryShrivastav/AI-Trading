@@ -80,9 +80,55 @@ Return JSON array:
 ]
 """
     
+    ORCHESTRATOR_PROMPT = """You are the orchestrator brain of an Indian-equities trading system.
+You weigh all available evidence and decide what to trade today. You are disciplined,
+risk-aware, and honest about uncertainty — when evidence is weak you recommend SKIP.
+
+**Today's decision context:**
+{context}
+
+Respond with a single JSON object:
+{{
+    "market_thesis": "<2-3 sentence view of today's market>",
+    "regime_assessment": "<trending-up | trending-down | ranging | high-volatility + why>",
+    "trade_recommendations": [
+        {{"instrument": "<symbol>", "direction": "LONG" | "SHORT", "conviction": <0.0-1.0>,
+          "size_pct": <float <= 10>, "stop_loss": <price>, "reasoning": "<why>"}}
+    ],
+    "risk_flags": ["<any caution that should lower autonomy>"]
+}}
+
+Only recommend instruments present in the candidate signals. Be conservative on conviction.
+If context is thin or conflicting, return an empty trade_recommendations list."""
+
     def __init__(self, api_key: str, model: str = "gpt-4-turbo-preview"):
         super().__init__(api_key, model)
         self.client = AsyncOpenAI(api_key=api_key)
+
+    async def orchestrate_decisions(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Make today's trading decisions from the assembled context."""
+        prompt = self.ORCHESTRATOR_PROMPT.format(context=json.dumps(context, indent=2, default=str))
+        response = await self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": "You are a disciplined trading orchestrator. Always respond with valid JSON."},
+                {"role": "user", "content": prompt},
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.2,
+            max_tokens=3000,
+        )
+        result = json.loads(response.choices[0].message.content)
+        if not isinstance(result, dict):
+            raise ValueError("orchestrator response was not a JSON object")
+        usage = getattr(response, "usage", None)
+        if usage is not None:
+            result["_usage"] = {
+                "input_tokens": getattr(usage, "prompt_tokens", 0),
+                "output_tokens": getattr(usage, "completion_tokens", 0),
+            }
+        result["_model"] = self.model
+        return result
     
     async def generate_trade_analysis(
         self,
@@ -144,6 +190,21 @@ Return JSON array:
                 "error": str(e)
             }
     
+    async def complete_json(self, system: str, user: str, max_tokens: int = 1024) -> Dict[str, Any]:
+        """Generic JSON completion used by specialist agents."""
+        response = await self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": system + " Always respond with valid JSON."},
+                {"role": "user", "content": user},
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.2,
+            max_tokens=max_tokens,
+        )
+        result = json.loads(response.choices[0].message.content)
+        return result if isinstance(result, dict) else {"result": result}
+
     async def rank_signals(
         self,
         signals: List[Dict[str, Any]],

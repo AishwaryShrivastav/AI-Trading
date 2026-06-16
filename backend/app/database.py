@@ -122,12 +122,15 @@ class Order(Base):
     # Fill details
     filled_quantity = Column(Integer, default=0)
     average_price = Column(Float, nullable=True)
-    
+
+    # Paper trading flag — True for simulated (paper) orders
+    is_paper = Column(Boolean, default=False, index=True)
+
     # Metadata
     placed_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     filled_at = Column(DateTime, nullable=True)
-    
+
     # Relationships
     trade_card = relationship("TradeCard", back_populates="orders")
 
@@ -214,7 +217,10 @@ class Position(Base):
     # P&L
     unrealized_pnl = Column(Float)
     realized_pnl = Column(Float, default=0.0)
-    
+
+    # Paper trading flag — True for simulated (paper) positions
+    is_paper = Column(Boolean, default=False, index=True)
+
     # Metadata
     opened_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -462,7 +468,10 @@ class OrderV2(Base):
     status_message = Column(Text)
     filled_quantity = Column(Integer, default=0)
     average_price = Column(Float)
-    
+
+    # Paper trading flag — True for simulated (paper) orders
+    is_paper = Column(Boolean, default=False, index=True)
+
     # Timestamps
     placed_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -503,7 +512,10 @@ class PositionV2(Base):
     # Risk Metrics
     risk_amount = Column(Float)
     reward_potential = Column(Float)
-    
+
+    # Paper trading flag — True for simulated (paper) positions
+    is_paper = Column(Boolean, default=False, index=True)
+
     # Timestamps
     opened_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -827,6 +839,33 @@ class KillSwitch(Base):
     
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class BacktestResult(Base):
+    """Stored backtest metrics per strategy/symbol (TradeHarness Step 3)."""
+    __tablename__ = "backtest_results"
+
+    id = Column(Integer, primary_key=True, index=True)
+    strategy = Column(String(50), nullable=False, index=True)
+    symbol = Column(String(20), nullable=False, index=True)
+    exchange = Column(String(10), default="NSE")
+    interval = Column(String(10), default="1D")
+
+    start_date = Column(String(40))
+    end_date = Column(String(40))
+
+    num_trades = Column(Integer, default=0)
+    win_rate = Column(Float)
+    total_return_pct = Column(Float)
+    cagr = Column(Float)
+    sharpe = Column(Float)
+    max_drawdown = Column(Float)
+    avg_hold_days = Column(Float)
+
+    params = Column(JSON)
+    trades = Column(JSON)
+
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
 
 # Database initialization
