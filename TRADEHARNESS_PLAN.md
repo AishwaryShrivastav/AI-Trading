@@ -68,7 +68,7 @@ risk_snapshots, market_data_cache, symbol_master, option_chains, option_strategi
 | **3** | Strategy expansion + backtest harness (L3) ✅ | Each strategy backtests on history (CAGR/Sharpe/DD/win-rate), forward-bias-safe, results stored. **Done (3a harness + 3b strategies); ORB deferred to live-WebSocket; real backfill needs Upstox token.** |
 | **4** | Risk engine extension (L5) ✅ | Drawdown protocol (diagnose→paper→halt→RESUME), VIX circuit breakers, trailing/time SL, net-edge cost-gate — all tested. **Done (4a+4b); profit-separation + VIX feed + 15:10 time-exit execution land with the scheduler.** |
 | **5** | Market-aware scheduler (L1/I3) ✅ | Jobs fire on timetable (token refresh, pre-market, signals, 15:10 force-exit, EOD, reflection); holiday calendar + dead-man's switch work |
-| **6** | Telegram HIL relay (L6) | Approve a paper trade from phone → executes in paper → shows in journal; HALT/RESUME + escalation tiers work |
+| **6** | Web HIL relay (SSE + approval UI) ✅ | Approve a paper trade from phone browser → executes in paper → shows in journal; HALT/RESUME work; real-time SSE activity feed |
 | **7** | Self-learning loop + reporting (L7/L8) | EOD job updates rolling strategy trust scores; regime classifier reweights strategies; weekly human-gated self-reflection; Sharpe/drawdown/attribution + Nifty benchmark on dashboard |
 | **8** | Paper sprint (2 weeks) | 2 weeks paper data; ≥2 strategies Sharpe > 1.0 |
 | **9** | Compliance + live launch (L0/Phase 4) | Static IP registered, Algo IDs mapped, tax buckets + CA export live, capital split; first real trade logged |
@@ -87,6 +87,16 @@ risk_snapshots, market_data_cache, symbol_master, option_chains, option_strategi
 ---
 
 ## 6. Progress log
+
+- 2026-06-16 — **Step 6 complete** (pending review): web-based HIL relay.
+  `services/notifier.py` (Notifier singleton: `asyncio.Queue` per SSE client,
+  `send()` broadcasts, stale/full queues auto-pruned); `routers/hil.py`
+  (GET /stream SSE, GET /status, GET /cards, POST /cards/{id}/approve|half|reject,
+  POST /halt|resume); `frontend/hil.html` (mobile-first dark-theme dashboard:
+  system status bar, pending approval cards with APPROVE/½ SIZE/REJECT buttons,
+  real-time activity feed, HALT/RESUME). Wired into pipeline_v2 (new_card event on
+  HIL tier) and market_jobs (morning_briefing/force_exit/eod_report events). GET /hil
+  serves the page. 14 new tests, 159 total pass.
 
 - 2026-06-16 — **Step 5 complete** (pending review): market-aware scheduler.
   `services/nse_calendar.py` (pure: `is_nse_holiday`, `is_market_hours`, `ist_now`,
