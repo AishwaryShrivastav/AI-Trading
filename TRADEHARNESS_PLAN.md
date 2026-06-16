@@ -89,6 +89,13 @@ risk_snapshots, market_data_cache, symbol_master, option_chains, option_strategi
 ## 6. Progress log
 
 - 2026-06-16 — Step 0 complete: plan reconciled & locked. Step 1 spec drafted for validation.
+- 2026-06-16 — **Step 2a complete** (pending review): orchestrator decision core. Added
+  `LLMBase.orchestrate_decisions` (implemented in Anthropic + OpenAI providers) and a new
+  `services/orchestrator.py` — context assembly from DB, strict JSON validation, deterministic
+  AUTO/HIL/SKIP tier routing, per-day Claude cost cap (₹200) in the Setting table, and rule-based
+  fallback on cost-cap/LLM-error/bad-JSON (fallback never AUTO-executes). 10 new tests (mocked),
+  86 total pass. **Not yet wired into the pipeline; specialist News/Technical/Macro agents = Step 2b.**
+  Live Claude still blocked on a valid `ANTHROPIC_API_KEY` (provided key returns 401).
 - 2026-06-16 — **Step 1 complete** (pending review). Added Claude/Anthropic provider
   (`llm/anthropic_provider.py`) as default brain with graceful OpenAI fallback; added
   `PaperBroker` + `get_broker()` factory; `TRADING_MODE=paper` default; `is_paper` flag on

@@ -109,6 +109,33 @@ Respond with ONLY a JSON object (no prose, no markdown) in this exact shape:
 }}
 """
 
+    ORCHESTRATOR_PROMPT = """You are the orchestrator brain of an Indian-equities trading system.
+You weigh all available evidence and decide what to trade today. You are disciplined,
+risk-aware, and honest about uncertainty — when evidence is weak you recommend SKIP.
+
+**Today's decision context:**
+{context}
+
+Respond with ONLY a single JSON object (no prose, no markdown):
+{{
+    "market_thesis": "<2-3 sentence view of today's market>",
+    "regime_assessment": "<trending-up | trending-down | ranging | high-volatility + why>",
+    "trade_recommendations": [
+        {{
+            "instrument": "<symbol>",
+            "direction": "LONG" | "SHORT",
+            "conviction": <float 0.0-1.0>,
+            "size_pct": <float, % of capital, <= 10>,
+            "stop_loss": <price>,
+            "reasoning": "<why this trade, referencing the signals/context>"
+        }}
+    ],
+    "risk_flags": ["<any caution that should lower autonomy, e.g. earnings nearby, high VIX>"]
+}}
+
+Rules: only recommend instruments present in the candidate signals. Be conservative on
+conviction. If the context is thin or conflicting, return an empty trade_recommendations list."""
+
     def __init__(self, api_key: str, model: str = "claude-opus-4-8"):
         super().__init__(api_key, model)
         # Lazy import so the module is importable without the SDK installed.
@@ -167,6 +194,34 @@ Respond with ONLY a JSON object (no prose, no markdown) in this exact shape:
                 "model_version": self.model,
                 "error": str(e),
             }
+
+    async def orchestrate_decisions(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Make today's trading decisions from the assembled context."""
+        prompt = self.ORCHESTRATOR_PROMPT.format(
+            context=json.dumps(context, indent=2, default=str)
+        )
+        response = await self.client.messages.create(
+            model=self.model,
+            max_tokens=3000,
+            temperature=0.2,
+            system="You are a disciplined trading orchestrator. Always respond with a single valid JSON object and nothing else.",
+            messages=[{"role": "user", "content": prompt}],
+        )
+        content = "".join(
+            block.text for block in response.content if getattr(block, "type", None) == "text"
+        )
+        result = _extract_json(content)
+        if not isinstance(result, dict):
+            raise ValueError("orchestrator response was not a JSON object")
+
+        usage = getattr(response, "usage", None)
+        if usage is not None:
+            result["_usage"] = {
+                "input_tokens": getattr(usage, "input_tokens", 0),
+                "output_tokens": getattr(usage, "output_tokens", 0),
+            }
+        result["_model"] = self.model
+        return result
 
     async def rank_signals(
         self,

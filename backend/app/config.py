@@ -36,6 +36,11 @@ class Settings(BaseSettings):
     trading_mode: str = "paper"  # paper | live
     paper_slippage_bps: float = 5.0  # simulated slippage in basis points
 
+    # Orchestrator (Claude brain) cost control
+    daily_llm_cost_cap_inr: float = 200.0  # hard daily cap; rule-based fallback beyond
+    auto_execute_conviction: float = 0.75  # >= this and no risk flags -> AUTO
+    hil_min_conviction: float = 0.50  # >= this -> HIL, below -> SKIP
+
     # Risk Parameters
     max_capital_risk_percent: float = 2.0
     min_liquidity_adv: int = 1000000
