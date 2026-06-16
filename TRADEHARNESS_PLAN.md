@@ -88,6 +88,15 @@ risk_snapshots, market_data_cache, symbol_master, option_chains, option_strategi
 
 ## 6. Progress log
 
+- 2026-06-16 — **Steps 1–3 merged to `master`** (PR #1). **Step 4a complete** (pending review):
+  risk governor / staged drawdown protocol. New `services/risk_governor.py` — tracks peak equity,
+  computes true drawdown %, state machine ACTIVE/DERISK/HALTED (persisted in Setting); 8%→DERISK
+  (0.5× sizing), 12%→HALTED (block new entries + force paper + heuristic self-diagnosis +
+  resume_required, sticky until human RESUME, then 14-day reduced-sizing window). Wired into
+  `run_orchestrated` (halt→skip account, derisk→scale qty); new `risk` router
+  (GET /state, POST /evaluate, POST /resume). 6 tests, 113 total pass. **Step 4b = net-edge cost
+  gate + VIX circuit breakers + trailing/time SL (VIX feed + time-exit land with the scheduler).**
+
 - 2026-06-16 — **Step 3b complete** (pending review): new daily strategies in
   `signals/extra.py` — RSI-divergence, Bollinger-squeeze breakout, 52-week-high breakout,
   Nifty-ETF momentum baseline (all SignalBase, ATR-based SL/TP). Registered in the backtester

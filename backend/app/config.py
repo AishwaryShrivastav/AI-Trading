@@ -43,6 +43,13 @@ class Settings(BaseSettings):
     hil_min_conviction: float = 0.50  # >= this -> HIL, below -> SKIP
     use_specialist_agents: bool = True  # enrich orchestrator context via News/Technical/Macro agents
 
+    # Risk governor — staged drawdown protocol (Step 4)
+    drawdown_derisk_pct: float = 8.0   # halve position sizes beyond this drawdown
+    drawdown_halt_pct: float = 12.0    # halt new entries + paper + self-diagnose
+    derisk_capital_factor: float = 0.5  # size multiplier in DERISK state
+    post_resume_derisk_days: int = 14   # reduced sizing window after RESUME
+    post_resume_capital_factor: float = 0.5
+
     # Risk Parameters
     max_capital_risk_percent: float = 2.0
     min_liquidity_adv: int = 1000000
