@@ -94,8 +94,66 @@ class UpstoxBroker(BrokerBase):
     
     def _get_instrument_key(self, symbol: str, exchange: str = "NSE") -> str:
         """Convert symbol to Upstox instrument key format."""
-        # Upstox format: NSE_EQ|INE123A01234 or simplified NSE_EQ:{symbol}
+        # Fallback naive format (often invalid for OHLCV). Prefer resolved keys.
         return f"{exchange}_EQ|{symbol}"
+
+    async def _resolve_instrument_key(self, symbol: str, exchange: str = "NSE") -> str:
+        """Resolve a valid Upstox instrument key for a trading symbol.
+
+        Tries the instruments dataset first, falling back to naive format.
+        """
+        try:
+            # Fast search through instruments list for exact trading symbol match
+            results = await self.search_instrument(symbol, instrument_type="EQ", exchange=exchange)
+            if results:
+                inst = results[0]
+                # Prefer instrument_key if available; otherwise token-like fields
+                key = (
+                    inst.get("instrument_key")
+                    or inst.get("instrumentToken")
+                    or inst.get("instrument_token")
+                    or inst.get("token")
+                    or inst.get("isin")
+                    or inst.get("isin_code")
+                )
+                if key:
+                    # Some datasets may provide raw token; normalize to exchange prefix if needed
+                    if "|" in key:
+                        return key
+                    return f"{exchange}_EQ|{key}"
+
+            # As a slower fallback, fetch full exchange instruments and try exact symbol match
+            instruments = await self.get_instruments(exchange=exchange)
+            if isinstance(instruments, list):
+                sym_upper = (symbol or "").upper()
+                for inst in instruments:
+                    ts = (
+                        inst.get("trading_symbol")
+                        or inst.get("tradingsymbol")
+                        or inst.get("tradingSymbol")
+                        or inst.get("symbol")
+                        or inst.get("name")
+                        or ""
+                    ).upper()
+                    if ts == sym_upper:
+                        key = (
+                            inst.get("instrument_key")
+                            or inst.get("instrumentToken")
+                            or inst.get("instrument_token")
+                            or inst.get("token")
+                            or inst.get("isin")
+                            or inst.get("isin_code")
+                        )
+                        if key:
+                            if "|" in key:
+                                return key
+                            return f"{exchange}_EQ|{key}"
+        except Exception:
+            # Ignore and use naive
+            pass
+
+        # Last resort
+        return self._get_instrument_key(symbol, exchange)
     
     async def get_ltp(self, symbol: str, exchange: str = "NSE") -> float:
         """Get Last Traded Price."""
@@ -134,18 +192,57 @@ class UpstoxBroker(BrokerBase):
         await self.ensure_authenticated()
         
         try:
-            instrument_key = self._get_instrument_key(symbol, exchange)
-            url = f"{self.BASE_URL}/historical-candle/{instrument_key}/{interval}"
-            
-            # Add date parameters if provided
-            if to_date:
-                url += f"/{to_date.strftime('%Y-%m-%d')}"
-                if from_date:
-                    url += f"/{from_date.strftime('%Y-%m-%d')}"
-            
-            response = await self.client.get(url, headers=self._get_headers())
-            response.raise_for_status()
-            data = response.json()
+            # Resolve a valid instrument key (avoid 404 due to naive symbol usage)
+            instrument_key = await self._resolve_instrument_key(symbol, exchange)
+
+            # Build candidate URLs (try multiple date variants, then no dates)
+            candidates = []
+            if from_date and to_date:
+                # Some APIs expect from/to, others to/from
+                candidates.append(
+                    f"{self.BASE_URL}/historical-candle/{instrument_key}/{interval}/{from_date.strftime('%Y-%m-%d')}/{to_date.strftime('%Y-%m-%d')}"
+                )
+                candidates.append(
+                    f"{self.BASE_URL}/historical-candle/{instrument_key}/{interval}/{to_date.strftime('%Y-%m-%d')}/{from_date.strftime('%Y-%m-%d')}"
+                )
+            elif to_date:
+                candidates.append(
+                    f"{self.BASE_URL}/historical-candle/{instrument_key}/{interval}/{to_date.strftime('%Y-%m-%d')}"
+                )
+            # Base without dates
+            candidates.append(f"{self.BASE_URL}/historical-candle/{instrument_key}/{interval}")
+
+            response = None
+            data = None
+            last_error: Optional[Exception] = None
+
+            for url in candidates:
+                try:
+                    response = await self.client.get(url, headers=self._get_headers())
+                    if response.status_code == 404:
+                        continue
+                    response.raise_for_status()
+                    data = response.json()
+                    break
+                except Exception as e:
+                    last_error = e
+                    continue
+
+            # As a final fallback, try naive key with base URL
+            if data is None:
+                naive_key = self._get_instrument_key(symbol, exchange)
+                if naive_key != instrument_key:
+                    fallback_url = f"{self.BASE_URL}/historical-candle/{naive_key}/{interval}"
+                    response = await self.client.get(fallback_url, headers=self._get_headers())
+                    if response.status_code != 404:
+                        response.raise_for_status()
+                        data = response.json()
+
+            if data is None:
+                # Exhausted attempts
+                if last_error:
+                    raise last_error
+                raise Exception("No OHLCV data returned")
             
             candles = data.get("data", {}).get("candles", [])
             

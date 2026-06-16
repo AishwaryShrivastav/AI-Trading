@@ -208,7 +208,13 @@ class TradingApp {
             document.getElementById(`approve-${card.id}`).addEventListener('click', () => {
                 const qtyInput = document.getElementById(`qty-${card.id}`);
                 const qty = qtyInput ? parseInt(qtyInput.value, 10) : null;
-                this.approveTradeCard(card.id, qty);
+                const otSel = document.getElementById(`order-type-${card.id}`);
+                const orderType = otSel ? otSel.value : null;
+                const priceInput = document.getElementById(`price-${card.id}`);
+                const price = priceInput && priceInput.value ? parseFloat(priceInput.value) : null;
+                const trigInput = document.getElementById(`trigger-${card.id}`);
+                const trigger = trigInput && trigInput.value ? parseFloat(trigInput.value) : null;
+                this.approveTradeCard(card.id, qty, orderType, price, trigger);
             });
 
             document.getElementById(`reject-${card.id}`).addEventListener('click', () => {
@@ -225,6 +231,20 @@ class TradingApp {
                         alert('Failed to load guardrail details');
                     }
                 });
+            }
+
+            // Toggle inputs based on order type
+            const otSel = document.getElementById(`order-type-${card.id}`);
+            const priceWrap = document.getElementById(`price-wrap-${card.id}`);
+            const trigWrap = document.getElementById(`trigger-wrap-${card.id}`);
+            if (otSel && priceWrap && trigWrap) {
+                const updateVisibility = () => {
+                    const val = otSel.value;
+                    priceWrap.style.display = (val === 'LIMIT' || val === 'SL') ? 'block' : 'none';
+                    trigWrap.style.display = (val === 'SL' || val === 'SL-M') ? 'block' : 'none';
+                };
+                otSel.addEventListener('change', updateVisibility);
+                updateVisibility();
             }
         });
     }
@@ -271,6 +291,23 @@ class TradingApp {
                         <input id="qty-${card.id}" class="qty-input" type="number" min="1" value="${card.quantity}" />
                     </div>
                     <div class="trade-detail">
+                        <label class="trade-detail-label" for="order-type-${card.id}">Order Type</label>
+                        <select id="order-type-${card.id}" class="order-type-input">
+                            <option value="LIMIT" selected>LIMIT</option>
+                            <option value="MARKET">MARKET</option>
+                            <option value="SL">SL</option>
+                            <option value="SL-M">SL-M</option>
+                        </select>
+                    </div>
+                    <div class="trade-detail" id="price-wrap-${card.id}">
+                        <label class="trade-detail-label" for="price-${card.id}">Price</label>
+                        <input id="price-${card.id}" class="price-input" type="number" min="0" step="0.05" value="${card.entry_price.toFixed(2)}" />
+                    </div>
+                    <div class="trade-detail" id="trigger-wrap-${card.id}" style="display:none;">
+                        <label class="trade-detail-label" for="trigger-${card.id}">Trigger Price</label>
+                        <input id="trigger-${card.id}" class="trigger-input" type="number" min="0" step="0.05" />
+                    </div>
+                    <div class="trade-detail">
                         <span class="trade-detail-label">Stop Loss</span>
                         <span class="trade-detail-value">₹${card.stop_loss.toFixed(2)}</span>
                     </div>
@@ -308,14 +345,14 @@ class TradingApp {
         return text.substring(0, length) + '...';
     }
 
-    async approveTradeCard(id, quantityOverride = null) {
+    async approveTradeCard(id, quantityOverride = null, orderType = null, price = null, triggerPrice = null) {
         if (!confirm('Approve this trade and place order?')) {
             return;
         }
 
         this.showLoading(true);
         try {
-            const result = await api.approveTradeCard(id, 'default_user', null, quantityOverride);
+            const result = await api.approveTradeCard(id, 'default_user', null, quantityOverride, orderType, price, triggerPrice);
             this.showToast('Trade approved and order placed!', 'success');
             await this.loadPendingTradeCards();
         } catch (error) {

@@ -88,6 +88,9 @@ class TradeCardApproval(BaseModel):
     user_id: str = "default_user"
     notes: Optional[str] = None
     quantity: Optional[int] = Field(None, gt=0)
+    order_type: Optional[OrderType] = None
+    price: Optional[float] = Field(None, gt=0)
+    trigger_price: Optional[float] = Field(None, gt=0)
 
 
 class TradeCardRejection(BaseModel):
@@ -271,6 +274,7 @@ class HealthResponse(BaseModel):
     database: str
     broker: str
     llm_provider: str
+    trading_mode: str = "paper"
 
 
 # ============================================================================

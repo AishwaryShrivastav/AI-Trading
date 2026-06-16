@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime
 import pandas as pd
 
-from ..database import TradeCard, MarketDataCache
+from ..database import TradeCard, MarketDataCache, Setting
 from ..config import get_settings
 from .signals import MomentumStrategy, MeanReversionStrategy
 from .llm import OpenAIProvider, GeminiProvider, HuggingFaceProvider
@@ -128,6 +128,11 @@ class TradeCardPipeline:
         """Fetch market data for symbols."""
         market_data = {}
         
+        from datetime import datetime, timedelta
+
+        to_date = datetime.utcnow()
+        from_date = to_date - timedelta(days=max(60, days))
+
         for symbol in symbols:
             try:
                 # Try to get from cache first
@@ -153,7 +158,12 @@ class TradeCardPipeline:
                 else:
                     # Fetch from broker if available
                     if self.broker:
-                        ohlcv = await self.broker.get_ohlcv(symbol, interval="1day")
+                        ohlcv = await self.broker.get_ohlcv(
+                            symbol,
+                            interval="1day",
+                            from_date=from_date,
+                            to_date=to_date,
+                        )
                         if ohlcv:
                             df = pd.DataFrame(ohlcv)
                             market_data[symbol] = df
@@ -173,18 +183,29 @@ class TradeCardPipeline:
     def _cache_market_data(self, symbol: str, ohlcv: List[Dict[str, Any]]):
         """Cache market data in database."""
         try:
+            from datetime import datetime
+
             for candle in ohlcv:
                 # Check if already exists
                 existing = self.db.query(MarketDataCache).filter(
                     MarketDataCache.symbol == symbol,
-                    MarketDataCache.timestamp == candle["timestamp"]
+                    MarketDataCache.timestamp == (
+                        candle["timestamp"] if isinstance(candle["timestamp"], datetime) else datetime.fromisoformat(str(candle["timestamp"]).replace("Z", ""))
+                    )
                 ).first()
                 
                 if not existing:
+                    ts = candle["timestamp"]
+                    if not isinstance(ts, datetime):
+                        try:
+                            ts = datetime.fromisoformat(str(ts).replace("Z", ""))
+                        except Exception:
+                            # Fallback: let DB accept string; SQLite will store as TEXT
+                            ts = candle["timestamp"]
                     cache_entry = MarketDataCache(
                         symbol=symbol,
                         interval="1D",
-                        timestamp=candle["timestamp"],
+                        timestamp=ts,
                         open=candle["open"],
                         high=candle["high"],
                         low=candle["low"],
@@ -372,6 +393,11 @@ class TradeCardPipeline:
                 self.db.refresh(trade_card)
                 
                 # Log audit trail
+                risk_checks = {
+                    "passed": risk_result.passed_all,
+                    "warnings": [w.to_dict() for w in risk_result.risk_warnings],
+                }
+
                 self.audit_logger.log_trade_card_created(
                     trade_card_id=trade_card.id,
                     trade_card_data={
@@ -382,10 +408,7 @@ class TradeCardPipeline:
                     },
                     signal_data=signal,
                     llm_analysis=signal.get("llm_analysis", {}),
-                    risk_checks={
-                        "passed": checks_passed,
-                        "warnings": warnings
-                    }
+                    risk_checks=risk_checks
                 )
                 
                 trade_card_ids.append(trade_card.id)

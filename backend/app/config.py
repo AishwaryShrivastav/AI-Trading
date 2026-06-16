@@ -24,10 +24,18 @@ class Settings(BaseSettings):
     # OpenAI API
     openai_api_key: str = ""
     openai_model: str = "gpt-4-turbo-preview"
-    
-    # LLM Provider
-    llm_provider: str = "openai"  # openai, gemini, huggingface
-    
+
+    # Anthropic (Claude) API — default orchestrator brain per TradeHarness plan
+    anthropic_api_key: str = ""
+    anthropic_model: str = "claude-opus-4-8"
+
+    # LLM Provider — anthropic (default when key present), openai, gemini, huggingface
+    llm_provider: str = "anthropic"
+
+    # Trading mode — paper (simulated fills, safe) or live (real Upstox orders)
+    trading_mode: str = "paper"  # paper | live
+    paper_slippage_bps: float = 5.0  # simulated slippage in basis points
+
     # Risk Parameters
     max_capital_risk_percent: float = 2.0
     min_liquidity_adv: int = 1000000
